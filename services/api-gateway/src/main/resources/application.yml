@@ -5,10 +5,13 @@ spring:
     name: api-gateway
   cloud:
     gateway:
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
+      server:
+        webmvc:
+          routes:
+            - id: market-data-service
+              uri: lb://market-data-service
+              predicates:
+                - Path=/api/market-data/**
 eureka:
   client:
     service-url:

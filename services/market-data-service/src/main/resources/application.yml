@@ -1,0 +1,31 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: market-data-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ledgerbull
+    username: ledgerbull
+    password: ${DB_PASSWORD:ledgerbull_local_dev}   # env override in deployment
+  jpa:
+    hibernate:
+      ddl-auto: validate      # we manage schema explicitly; do NOT use create-drop in a real service
+    properties:
+      hibernate:
+        format_sql: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+marketdata:
+  symbols: BTC-USD,ETH-USD
+  websocket-url: wss://ws-feed.exchange.coinbase.com
