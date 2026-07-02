@@ -1,0 +1,40 @@
+# Java / Maven
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Node
+node_modules/
+.next/
+dist/
+
+# C++
+build/
+*.o
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Secrets — never commit
+.env
+*.env
+secrets/
+application-local.yml
+
+# Data files (do not commit large datasets)
+*.csv
+*.parquet
+data/
+
+# OS
+.DS_Store
