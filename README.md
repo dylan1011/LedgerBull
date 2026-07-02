@@ -13,7 +13,7 @@
 | Backend / microservices | **Java 21 + Spring Boot 3.x** | The core spine |
 | Matching engine core | **C++** | Low-latency order book |
 | AI / ML | **Python** | Signals, risk forecasting, anomaly detection, RL execution, LLM analytics |
-| Frontend | **JavaScript (React / Next.js)** | Dashboard |
+| Frontend | **Next.js (App Router) + TypeScript + Tailwind CSS** | Dashboard |
 | Database | **PostgreSQL + TimescaleDB** (Redis for caching) | ACID + time-series |
 | Containerization | **Docker + Docker Compose** | Primary runtime |
 | Scaling layer | **Kubernetes (Minikube local) + Helm** | Demonstrated scaling |
@@ -46,7 +46,7 @@
 │   ├── strategy-signal-service/      # Spring Boot (orch) + Python sidecar
 │   └── alert-service/                # Spring Boot — alerts
 ├── ai-sidecar/                       # Python FastAPI — ML/AI serving
-├── frontend/                         # React / Next.js dashboard
+├── frontend/                         # Next.js (App Router) dashboard
 ├── .gitignore
 └── README.md
 ```
@@ -91,6 +91,19 @@ cd services/api-gateway && mvn spring-boot:run
 ```
 
 Then open the Eureka dashboard at <http://localhost:8761> and confirm `API-GATEWAY` is registered.
+
+### Frontend (Next.js)
+
+The dashboard is a **Next.js (App Router) + TypeScript + Tailwind CSS** app in `frontend/`.
+It reads the API Gateway base URL from `NEXT_PUBLIC_API_BASE_URL` (see `frontend/.env.example`,
+defaulting to `http://localhost:8080`).
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:3000
+# npm run build && npm run start   # production
+```
 
 ---
 
