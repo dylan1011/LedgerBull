@@ -68,3 +68,7 @@ data/
 .DS_Store
 .idea/
 .vscode/
+
+# Local verification scripts (not for repo)
+scripts/
+verify-*.sh
