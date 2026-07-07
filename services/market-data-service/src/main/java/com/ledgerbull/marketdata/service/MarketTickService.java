@@ -76,17 +76,43 @@ public class MarketTickService {
         }
     }
 
-    /** Latest cached price for a symbol, from Redis. Returns empty if Redis is unavailable. */
+    /**
+     * Latest price for a symbol, cache-with-fallback: try the Redis fast path first, and on a cache
+     * miss <i>or</i> a Redis failure fall back to the most recent tick in TimescaleDB (the source of
+     * truth). Returns empty only when the symbol has never been seen. A Redis outage degrades read
+     * latency, never availability.
+     */
     public Optional<LatestPriceResponse> latestPrice(String symbol) {
         try {
             String value = redisTemplate.opsForValue().get(LATEST_KEY_PREFIX + symbol);
-            if (value == null) {
-                return Optional.empty();
+            if (value != null) {
+                return Optional.of(new LatestPriceResponse(symbol, Double.parseDouble(value), "redis"));
             }
-            return Optional.of(new LatestPriceResponse(symbol, Double.parseDouble(value), "redis"));
+            // Cache miss (Redis up but no value yet) — fall through to the DB.
         } catch (RuntimeException ex) {
-            log.warn("Failed to read latest price for {} from Redis: {}", symbol, ex.getMessage());
-            return Optional.empty();
+            // Redis down/slow — fall through to the DB source of truth.
+            log.warn("Redis unavailable for latest price of {} ({}); falling back to TimescaleDB",
+                    symbol, ex.getMessage());
+        }
+        return latestPriceFromDatabase(symbol);
+    }
+
+    /** Source-of-truth fallback: most recent persisted tick, with best-effort cache write-back. */
+    private Optional<LatestPriceResponse> latestPriceFromDatabase(String symbol) {
+        return repository.findFirstBySymbolOrderByTimeDesc(symbol)
+                .map(tick -> {
+                    // Repopulate the cache off-thread; harmless no-op if Redis is down.
+                    cacheExecutor.execute(() -> writeBackToCache(symbol, tick.getPrice()));
+                    return new LatestPriceResponse(symbol, tick.getPrice(), "timescaledb");
+                });
+    }
+
+    private void writeBackToCache(String symbol, double price) {
+        try {
+            redisTemplate.opsForValue().set(LATEST_KEY_PREFIX + symbol, Double.toString(price));
+        } catch (RuntimeException ex) {
+            // Best-effort write-back; never fail a read because the cache couldn't be refreshed.
+            cacheFailures.incrementAndGet();
         }
     }
 

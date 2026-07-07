@@ -25,7 +25,10 @@ public class MarketDataController {
         this.tickService = tickService;
     }
 
-    /** Latest price for a symbol, served from the Redis cache. 404 if not yet seen. */
+    /**
+     * Latest price for a symbol: Redis fast path, falling back to TimescaleDB when the cache misses
+     * or Redis is down. 404 only if the symbol has never been seen.
+     */
     @GetMapping("/latest/{symbol}")
     public ResponseEntity<LatestPriceResponse> latest(@PathVariable String symbol) {
         return tickService.latestPrice(symbol)

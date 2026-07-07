@@ -33,6 +33,12 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  health:
+    redis:
+      # Redis is a fast-path cache, not the source of truth. Its outage must NOT mark the
+      # service DOWN — the service keeps ingesting and serves latest prices from TimescaleDB.
+      # (TimescaleDB's own 'db' health indicator stays enabled, so a DB outage still shows.)
+      enabled: false
 marketdata:
   symbols: BTC-USD,ETH-USD
   websocket-url: wss://ws-feed.exchange.coinbase.com
