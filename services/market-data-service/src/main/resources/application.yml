@@ -7,6 +7,11 @@ spring:
     url: jdbc:postgresql://localhost:5432/ledgerbull
     username: ledgerbull
     password: ${DB_PASSWORD:ledgerbull_local_dev}   # env override in deployment
+    hikari:
+      # Don't hard-fail the pool at boot if the DB isn't reachable yet; keep retrying instead.
+      initialization-fail-timeout: -1
+      connection-timeout: 10000
+      keepalive-time: 30000
   jpa:
     hibernate:
       ddl-auto: validate      # we manage schema explicitly; do NOT use create-drop in a real service
@@ -17,6 +22,8 @@ spring:
     redis:
       host: localhost
       port: 6379
+      timeout: 500ms          # fail fast if Redis is slow/down (cache, not source of truth)
+      connect-timeout: 500ms
 eureka:
   client:
     service-url:
@@ -29,3 +36,7 @@ management:
 marketdata:
   symbols: BTC-USD,ETH-USD
   websocket-url: wss://ws-feed.exchange.coinbase.com
+  batch:
+    size: 100                # flush when this many ticks buffered...
+    flush-interval-ms: 1000  # ...or every second, whichever comes first
+    max-buffer: 10000        # bounded buffer; oldest ticks dropped on overflow
