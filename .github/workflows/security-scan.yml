@@ -1,0 +1,108 @@
+name: Security Scan
+
+# Runs dependency, container/filesystem, and secret scanning on every push and PR.
+# Only HIGH/CRITICAL findings fail the build, so low-severity noise stays out of the way.
+# Third-party actions are pinned to commit SHAs (supply-chain safety); GitHub-owned
+# actions are tag-pinned.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-check:
+    name: OWASP Dependency-Check (Java deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Cache the NVD vulnerability database between runs so it isn't rebuilt every time.
+      - name: Cache OWASP NVD data
+        uses: actions/cache@v4
+        with:
+          path: ~/.dc-data
+          key: owasp-dc-data-${{ runner.os }}
+
+      - name: Run OWASP Dependency-Check on all Java services
+        env:
+          # Optional but strongly recommended: set an NVD_API_KEY repo secret to avoid
+          # NVD rate limiting. Works without it, just slower on the first run.
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          set -e
+          for svc in eureka-server config-server api-gateway market-data-service; do
+            echo "::group::OWASP Dependency-Check :: $svc"
+            mvn -B -ntp -f "services/$svc/pom.xml" org.owasp:dependency-check-maven:check \
+              -DfailBuildOnCVSS=7 \
+              -DassemblyAnalyzerEnabled=false \
+              -DnvdApiKey="${NVD_API_KEY}" \
+              -DnvdApiDelay=6000 \
+              -DdataDirectory="$HOME/.dc-data" \
+              -Dformat=HTML
+            echo "::endgroup::"
+          done
+
+      - name: Upload Dependency-Check reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-reports
+          path: services/**/target/dependency-check-report.html
+          if-no-files-found: ignore
+
+  trivy:
+    name: Trivy (image + filesystem)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build market-data-service image
+        run: docker build -t ledgerbull/market-data-service:ci services/market-data-service
+
+      - name: Trivy image scan (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ledgerbull/market-data-service:ci
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          exit-code: '1'
+
+      - name: Trivy filesystem scan (deps + IaC misconfig + secrets, HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          exit-code: '1'
+
+  secret-scan:
+    name: TruffleHog secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so past commits are scanned too
+
+      - name: TruffleHog (verified + unknown secrets, fails build if found)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" \
+            trufflesecurity/trufflehog:3.95.8 \
+            git file:///repo --results=verified,unknown --fail

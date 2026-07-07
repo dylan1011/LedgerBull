@@ -10,5 +10,8 @@ RUN mvn -q -B -DskipTests package
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
+# Run as a non-root user to reduce container-escape blast radius (Trivy DS-0002).
+RUN useradd -r -u 1001 -g root appuser && chown -R appuser:root /app
+USER appuser
 EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
