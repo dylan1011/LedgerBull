@@ -17,6 +17,15 @@ jobs:
   dependency-check:
     name: OWASP Dependency-Check (Java deps)
     runs-on: ubuntu-latest
+    # OWASP Dependency-Check must download the NVD vulnerability feed. NVD now heavily
+    # rate-limits requests without an API key, which makes this step slow/flaky on
+    # shared CI runners. It therefore runs as REPORT-ONLY here so it never blocks the
+    # pipeline on infrastructure throttling. Reliable HIGH/CRITICAL *gating* for Java
+    # dependencies is provided by the Trivy job below, which does not depend on NVD.
+    #
+    # To turn this into a hard gate: add a free NVD_API_KEY repo secret
+    # (https://nvd.nist.gov/developers/request-an-api-key) and delete the line below.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
