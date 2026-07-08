@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+// Separate protobuf package from the C++ engine namespace (ledgerbull::) to avoid
+// name collisions with Side, OrderType, Fill, and MatchingEngine.
+package ledgerbull.api;
+
+enum Side {
+  SIDE_UNSPECIFIED = 0;
+  BUY = 1;
+  SELL = 2;
+}
+
+enum OrderType {
+  TYPE_UNSPECIFIED = 0;
+  LIMIT = 1;
+  MARKET = 2;
+}
+
+message SubmitOrderRequest {
+  string order_id = 1;
+  string symbol = 2;
+  Side side = 3;
+  OrderType type = 4;
+  int64 price = 5;     // integer ticks (matches engine integer price)
+  int64 quantity = 6;
+}
+
+message Fill {
+  string taker_order_id = 1;
+  string maker_order_id = 2;
+  int64 price = 3;
+  int64 quantity = 4;
+  string symbol = 5;
+}
+
+message SubmitOrderResponse {
+  repeated Fill fills = 1;
+  int64 resting_quantity = 2;
+  bool accepted = 3;
+  string reject_reason = 4;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+}
+
+message CancelOrderResponse {
+  bool cancelled = 1;
+}
+
+message BookQueryRequest {
+  string symbol = 1;
+}
+
+message BookLevel {
+  int64 price = 1;
+  int64 quantity = 2;
+}
+
+message BookQueryResponse {
+  repeated BookLevel bids = 1;
+  repeated BookLevel asks = 2;
+}
+
+service MatchingEngine {
+  rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc QueryBook(BookQueryRequest) returns (BookQueryResponse);
+}

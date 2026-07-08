@@ -1,7 +1,7 @@
-# LedgerBull Matching Engine — C++ (Sub-phases 2A + 2B + 2C)
+# LedgerBull Matching Engine — C++ (Sub-phases 2A–2D)
 
-Standalone C++ matching engine foundation. **No networking, gRPC, persistence beyond the
-local event log, or Java** in this stage — those arrive in sub-phases 2D–2E.
+Standalone C++ matching engine foundation. **Java integration is sub-phase 2E** — 2D adds
+a C++ gRPC server tested with grpcurl only.
 
 ## Sub-phase 2A: Order book data structure
 
@@ -70,6 +70,54 @@ volumes:
 
 Total-VM-loss protection (backups) is Phase 12.
 
+## Sub-phase 2D: gRPC server (C++ only)
+
+`matching_engine_server` exposes the engine over gRPC. Handlers are a **thin adapter** —
+they translate protobuf ↔ engine types and delegate to `MatchingEngine` (matching,
+ordering, and event logging unchanged).
+
+### Prerequisites (macOS / Homebrew)
+
+```bash
+brew install grpc protobuf grpcurl
+cmake -S . -B build -DCMAKE_PREFIX_PATH="$(brew --prefix grpc);$(brew --prefix protobuf)"
+cmake --build build
+```
+
+### Configuration
+
+| Setting | Default | Env var |
+| --- | --- | --- |
+| gRPC port | `50051` | `LEDGERBULL_ENGINE_GRPC_PORT` |
+| Event log | `./data/engine-events.log` | `LEDGERBULL_ENGINE_LOG_PATH` |
+
+Server reflection is enabled so **grpcurl** can discover services without a local `.proto`.
+
+### Proto contract
+
+Source: `proto/matching_engine.proto` — package **`ledgerbull.api`** (separate from the
+C++ `ledgerbull::` engine namespace to avoid name collisions). Service:
+`ledgerbull.api.MatchingEngine` with `SubmitOrder`, `CancelOrder`, `QueryBook`.
+
+Prices and quantities are **`int64` ticks** on the wire, matching the engine.
+
+### Run & test
+
+```bash
+# start server
+LEDGERBULL_ENGINE_LOG_PATH=./data/engine-events.log ./build/matching_engine_server
+
+# grpcurl smoke test (submit → match/fill → query → cancel → crash recovery)
+bash scripts/grpc_smoke_test.sh
+```
+
+Example:
+
+```bash
+grpcurl -plaintext -d '{"order_id":"2","symbol":"BTC-USD","side":"BUY","type":"LIMIT","price":105,"quantity":3}' \
+  localhost:50051 ledgerbull.api.MatchingEngine/SubmitOrder
+```
+
 ## Build & run
 
 ```bash
@@ -77,8 +125,12 @@ cd services/matching-engine
 cmake -S . -B build
 cmake --build build
 
-# all tests (2A + 2B + 2C)
+# all tests (2A + 2B + 2C) — 28 tests
 ctest --test-dir build --output-on-failure
+
+# gRPC server + grpcurl smoke test (2D)
+./build/matching_engine_server
+bash scripts/grpc_smoke_test.sh
 
 # matching demo (2B)
 ./build/order_book_demo
@@ -87,4 +139,4 @@ ctest --test-dir build --output-on-failure
 ./build/crash_recovery_demo
 ```
 
-Requires C++17 and CMake ≥ 3.15.
+Requires C++17, CMake ≥ 3.15, and Homebrew `grpc` + `protobuf` for the gRPC server target.
