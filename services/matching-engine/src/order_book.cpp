@@ -1,5 +1,6 @@
 #include "ledgerbull/order_book.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <utility>
 
@@ -55,6 +56,79 @@ bool OrderBook::cancel_order(OrderId order_id) {
 
     index_.erase(idx);
     return true;
+}
+
+void OrderBook::apply_maker_fill(OrderId maker_id, Quantity fill_qty) {
+    auto idx = index_.find(maker_id);
+    if (idx == index_.end()) {
+        return;
+    }
+
+    Order& maker = *idx->second.it;
+    maker.quantity -= fill_qty;
+    if (maker.quantity <= 0) {
+        cancel_order(maker_id);
+    }
+}
+
+std::vector<Fill> OrderBook::submit_order(const Order& incoming) {
+    // Reject duplicate ids — the taker must not already be resting in the book.
+    if (index_.find(incoming.order_id) != index_.end()) {
+        return {};
+    }
+
+    std::vector<Fill> fills;
+    Quantity remaining = incoming.quantity;
+
+    if (incoming.side == Side::BUY) {
+        // Match against asks: best (lowest) price first, FIFO within level.
+        while (remaining > 0) {
+            const auto ask = best_ask();
+            if (!ask) {
+                break;
+            }
+            // LIMIT buy crosses when willing to pay >= best ask; MARKET always crosses.
+            if (incoming.type == OrderType::LIMIT && incoming.price < ask->price) {
+                break;
+            }
+
+            const Quantity match_qty = std::min(remaining, ask->quantity);
+            fills.push_back(Fill{incoming.order_id, ask->order_id, ask->price, match_qty,
+                                 symbol_, next_trade_sequence_++});
+
+            remaining -= match_qty;
+            apply_maker_fill(ask->order_id, match_qty);
+        }
+    } else {
+        // Match against bids: best (highest) price first, FIFO within level.
+        while (remaining > 0) {
+            const auto bid = best_bid();
+            if (!bid) {
+                break;
+            }
+            // LIMIT sell crosses when willing to accept <= best bid; MARKET always crosses.
+            if (incoming.type == OrderType::LIMIT && incoming.price > bid->price) {
+                break;
+            }
+
+            const Quantity match_qty = std::min(remaining, bid->quantity);
+            fills.push_back(Fill{incoming.order_id, bid->order_id, bid->price, match_qty,
+                                 symbol_, next_trade_sequence_++});
+
+            remaining -= match_qty;
+            apply_maker_fill(bid->order_id, match_qty);
+        }
+    }
+
+    // LIMIT remainder rests in the book (reuses 2A add_order). MARKET remainder is
+    // discarded — it never rests.
+    if (remaining > 0 && incoming.type == OrderType::LIMIT) {
+        Order rest = incoming;
+        rest.quantity = remaining;
+        add_order(rest);
+    }
+
+    return fills;
 }
 
 std::optional<Order> OrderBook::best_bid() const {

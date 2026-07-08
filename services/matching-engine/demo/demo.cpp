@@ -2,44 +2,51 @@
 
 #include <iostream>
 
+using ledgerbull::Fill;
 using ledgerbull::Order;
 using ledgerbull::OrderBook;
+using ledgerbull::OrderType;
 using ledgerbull::Side;
+
+static void print_fills(const std::vector<Fill>& fills) {
+    if (fills.empty()) {
+        std::cout << "  (no fills)\n";
+        return;
+    }
+    for (const Fill& f : fills) {
+        std::cout << "  taker=" << f.taker_order_id << " maker=" << f.maker_order_id
+                  << " price=" << f.price << " qty=" << f.quantity
+                  << " trade_seq=" << f.sequence << "\n";
+    }
+}
 
 int main() {
     OrderBook book("BTC-USD");
 
-    std::cout << "=== LedgerBull order book demo (sub-phase 2A: no matching) ===\n\n";
+    std::cout << "=== LedgerBull matching demo (sub-phase 2B) ===\n";
+    std::cout << "Trade price rule: resting (maker) order's price.\n";
+    std::cout << "Market-order remainder policy: discard (never rests).\n\n";
 
-    // Add a handful of orders. Prices are in integer ticks.
-    book.add_order(Order(1, "BTC-USD", Side::BUY, 100, 5));
-    book.add_order(Order(2, "BTC-USD", Side::BUY, 101, 3));
-    book.add_order(Order(3, "BTC-USD", Side::BUY, 101, 8));   // same price as id 2, later
-    book.add_order(Order(4, "BTC-USD", Side::SELL, 104, 4));
-    book.add_order(Order(5, "BTC-USD", Side::SELL, 104, 2));  // same price as id 4, later
-    book.add_order(Order(6, "BTC-USD", Side::SELL, 106, 9));
+    // Rest two ask levels.
+    book.add_order(Order(1, "BTC-USD", Side::SELL, 105, 5));
+    book.add_order(Order(2, "BTC-USD", Side::SELL, 106, 5));
+    book.add_order(Order(3, "BTC-USD", Side::BUY, 100, 3));  // non-crossing bid
 
-    std::cout << "After adding 6 orders:\n";
-    std::cout << book.to_string() << "\n";
+    std::cout << "Initial book:\n" << book.to_string() << "\n";
 
-    auto bid = book.best_bid();
-    auto ask = book.best_ask();
-    std::cout << "best bid: price=" << (bid ? bid->price : 0)
-              << " id=" << (bid ? bid->order_id : 0) << "\n";
-    std::cout << "best ask: price=" << (ask ? ask->price : 0)
-              << " id=" << (ask ? ask->order_id : 0) << "\n\n";
+    // Incoming buy sweeps both ask levels (5 @105, then 3 @106).
+    std::cout << "Submitting LIMIT BUY id=4 price=106 qty=8 (sweeps two ask levels)...\n";
+    auto fills = book.submit_order(Order(4, "BTC-USD", Side::BUY, 106, 8, OrderType::LIMIT));
 
-    std::cout << "Cancelling order id=2 (a 101 bid, front of that level)...\n\n";
-    bool removed = book.cancel_order(2);
-    std::cout << "cancel_order(2) -> " << (removed ? "true" : "false") << "\n\n";
+    std::cout << "Fills produced:\n";
+    print_fills(fills);
 
-    std::cout << "After cancelling id=2:\n";
-    std::cout << book.to_string() << "\n";
+    std::cout << "\nBook after sweep:\n" << book.to_string() << "\n";
 
-    auto bid2 = book.best_bid();
-    std::cout << "best bid is now: price=" << (bid2 ? bid2->price : 0)
-              << " id=" << (bid2 ? bid2->order_id : 0)
-              << "  (id=3 now leads the 101 level)\n";
+    // Cancel the leftover ask level partially? Actually after sweep, ask id=2 has qty 2 left.
+    std::cout << "Cancelling resting ask id=2 (qty 2 remaining at 106)...\n";
+    book.cancel_order(2);
+    std::cout << "\nBook after cancel:\n" << book.to_string();
 
     return 0;
 }

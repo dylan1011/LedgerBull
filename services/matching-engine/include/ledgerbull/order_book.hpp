@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ledgerbull/fill.hpp"
 #include "ledgerbull/order.hpp"
 
 #include <cstddef>
@@ -13,11 +14,12 @@
 
 namespace ledgerbull {
 
-/// A single-symbol limit order book that maintains price-time priority.
+/// A single-symbol order book with price-time priority and limit/market matching.
 ///
-/// Sub-phase 2A: data structure only. It rests orders and supports add / cancel /
-/// query. It does NOT match crossing orders — a buy priced at or above the best ask
-/// simply rests in the book. Matching arrives in sub-phase 2B.
+/// Sub-phase 2A: resting book (add / cancel / query).
+/// Sub-phase 2B: `submit_order` matches crossing orders under price-time priority.
+/// Trades execute at the **maker** (resting order's) price. LIMIT remainders rest;
+/// MARKET remainders are discarded.
 ///
 /// Ordering rules:
 ///   - Bids: highest price first (a buyer paying more is ahead).
@@ -30,6 +32,13 @@ public:
     /// Rest an order in the book. The book assigns its arrival sequence.
     /// Returns false (and inserts nothing) if `order_id` already exists.
     bool add_order(const Order& order);
+
+    /// Submit an aggressing order and match it against the opposite side under
+    /// price-time priority (sub-phase 2B). Produces zero or more fills, executed at
+    /// each resting (maker) order's price. A LIMIT order's unfilled remainder rests
+    /// in the book; a MARKET order's remainder is discarded. Returns the fills in
+    /// execution order.
+    std::vector<Fill> submit_order(const Order& order);
 
     /// Remove an order by id. Returns true if it was found and removed.
     bool cancel_order(OrderId order_id);
@@ -68,9 +77,13 @@ private:
 
     std::string symbol_;
     Sequence next_sequence_{1};
+    Sequence next_trade_sequence_{1};
     BidLevels bids_;
     AskLevels asks_;
     std::unordered_map<OrderId, Locator> index_;
+
+    /// Reduce a resting maker's quantity after a fill; remove it if fully consumed.
+    void apply_maker_fill(OrderId maker_id, Quantity fill_qty);
 
     template <typename Levels>
     static std::vector<Order> snapshot(const Levels& levels);

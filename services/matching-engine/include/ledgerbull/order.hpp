@@ -14,6 +14,17 @@ inline const char* to_string(Side side) {
     return side == Side::BUY ? "BUY" : "SELL";
 }
 
+/// Order type.
+///   LIMIT  — has a price; matches while it crosses, remainder rests in the book.
+///   MARKET — no price limit; matches best opposite orders until filled or the book
+///            side is empty; any unfilled remainder is discarded (never rests).
+enum class OrderType { LIMIT, MARKET };
+
+/// Human-readable order type name.
+inline const char* to_string(OrderType type) {
+    return type == OrderType::LIMIT ? "LIMIT" : "MARKET";
+}
+
 // --- Numeric types -----------------------------------------------------------
 //
 // Price is stored as an integer number of "ticks" (the smallest price increment),
@@ -42,14 +53,17 @@ struct Order {
     OrderId order_id{0};
     std::string symbol;
     Side side{Side::BUY};
-    Price price{0};        // in ticks
+    Price price{0};        // in ticks (ignored for MARKET orders)
     Quantity quantity{0};  // remaining quantity
+    OrderType type{OrderType::LIMIT};
     Sequence sequence{0};  // arrival order, assigned by the book
 
     Order() = default;
 
-    Order(OrderId id, std::string sym, Side s, Price p, Quantity q)
-        : order_id(id), symbol(std::move(sym)), side(s), price(p), quantity(q) {}
+    // 5-arg form keeps LIMIT the default so existing call sites are unaffected.
+    Order(OrderId id, std::string sym, Side s, Price p, Quantity q,
+          OrderType t = OrderType::LIMIT)
+        : order_id(id), symbol(std::move(sym)), side(s), price(p), quantity(q), type(t) {}
 };
 
 }  // namespace ledgerbull
