@@ -29,6 +29,27 @@ bool OrderBook::add_order(const Order& incoming) {
     return true;
 }
 
+bool OrderBook::add_order_with_sequence(const Order& incoming, Sequence seq) {
+    if (index_.find(incoming.order_id) != index_.end()) {
+        return false;
+    }
+
+    Order order = incoming;
+    order.sequence = seq;
+    next_sequence_ = std::max(next_sequence_, seq + 1);
+
+    if (order.side == Side::BUY) {
+        Level& level = bids_[order.price];
+        level.push_back(order);
+        index_[order.order_id] = Locator{Side::BUY, order.price, std::prev(level.end())};
+    } else {
+        Level& level = asks_[order.price];
+        level.push_back(order);
+        index_[order.order_id] = Locator{Side::SELL, order.price, std::prev(level.end())};
+    }
+    return true;
+}
+
 bool OrderBook::cancel_order(OrderId order_id) {
     auto idx = index_.find(order_id);
     if (idx == index_.end()) {
@@ -69,6 +90,68 @@ void OrderBook::apply_maker_fill(OrderId maker_id, Quantity fill_qty) {
     if (maker.quantity <= 0) {
         cancel_order(maker_id);
     }
+}
+
+std::vector<Fill> OrderBook::submit_order_with_sequence(const Order& incoming, Sequence seq) {
+    // Reject duplicate ids — the taker must not already be resting in the book.
+    if (index_.find(incoming.order_id) != index_.end()) {
+        return {};
+    }
+
+    // Reserve this sequence in the counter even if the order fully matches and never rests.
+    next_sequence_ = std::max(next_sequence_, seq + 1);
+
+    std::vector<Fill> fills;
+    Quantity remaining = incoming.quantity;
+
+    if (incoming.side == Side::BUY) {
+        // Match against asks: best (lowest) price first, FIFO within level.
+        while (remaining > 0) {
+            const auto ask = best_ask();
+            if (!ask) {
+                break;
+            }
+            // LIMIT buy crosses when willing to pay >= best ask; MARKET always crosses.
+            if (incoming.type == OrderType::LIMIT && incoming.price < ask->price) {
+                break;
+            }
+
+            const Quantity match_qty = std::min(remaining, ask->quantity);
+            fills.push_back(Fill{incoming.order_id, ask->order_id, ask->price, match_qty,
+                                 symbol_, next_trade_sequence_++});
+
+            remaining -= match_qty;
+            apply_maker_fill(ask->order_id, match_qty);
+        }
+    } else {
+        // Match against bids: best (highest) price first, FIFO within level.
+        while (remaining > 0) {
+            const auto bid = best_bid();
+            if (!bid) {
+                break;
+            }
+            // LIMIT sell crosses when willing to accept <= best bid; MARKET always crosses.
+            if (incoming.type == OrderType::LIMIT && incoming.price > bid->price) {
+                break;
+            }
+
+            const Quantity match_qty = std::min(remaining, bid->quantity);
+            fills.push_back(Fill{incoming.order_id, bid->order_id, bid->price, match_qty,
+                                 symbol_, next_trade_sequence_++});
+
+            remaining -= match_qty;
+            apply_maker_fill(bid->order_id, match_qty);
+        }
+    }
+
+    // LIMIT remainder rests in the book with the pre-assigned sequence.
+    if (remaining > 0 && incoming.type == OrderType::LIMIT) {
+        Order rest = incoming;
+        rest.quantity = remaining;
+        add_order_with_sequence(rest, seq);
+    }
+
+    return fills;
 }
 
 std::vector<Fill> OrderBook::submit_order(const Order& incoming) {

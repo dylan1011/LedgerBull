@@ -1,2 +1,6 @@
 # CMake build output
 build/
+
+# Runtime event logs (persistent data dir — keep structure, ignore contents)
+data/*.log
+data/test/*.log

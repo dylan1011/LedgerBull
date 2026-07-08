@@ -58,7 +58,16 @@ public:
     /// Multi-line dump of both sides in priority order, for inspection/verification.
     std::string to_string() const;
 
+    /// Next sequence number that would be assigned (for write-ahead logging reservation).
+    Sequence peek_next_sequence() const { return next_sequence_; }
+
+    /// Submit with a pre-assigned sequence (used by the event log on live apply and replay).
+    /// Advances `next_sequence_` to at least `seq + 1` even if the order never rests.
+    std::vector<Fill> submit_order_with_sequence(const Order& order, Sequence seq);
+
 private:
+    /// Insert a resting order with an exact sequence (replay / write-ahead path).
+    bool add_order_with_sequence(const Order& order, Sequence seq);
     // A price level holds its orders in a std::list so cancels from the middle are
     // O(1) and the stored iterators stay valid when other orders are erased.
     using Level = std::list<Order>;
