@@ -1,5 +1,5 @@
 package com.ledgerbull.marketdata.web.dto;
 
-/** Latest cached price for a symbol, served from Redis. */
+/** Latest price for a symbol; {@code source} is {@code redis} or {@code timescaledb}. */
 public record LatestPriceResponse(String symbol, double price, String source) {
 }

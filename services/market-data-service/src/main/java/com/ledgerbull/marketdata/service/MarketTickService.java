@@ -62,10 +62,13 @@ public class MarketTickService {
         cacheExecutor.execute(() -> updateLatestPrice(tick));
     }
 
+    private void setLatestPriceInCache(String symbol, double price) {
+        redisTemplate.opsForValue().set(LATEST_KEY_PREFIX + symbol, Double.toString(price));
+    }
+
     private void updateLatestPrice(MarketTick tick) {
         try {
-            redisTemplate.opsForValue().set(LATEST_KEY_PREFIX + tick.getSymbol(),
-                    Double.toString(tick.getPrice()));
+            setLatestPriceInCache(tick.getSymbol(), tick.getPrice());
         } catch (RuntimeException ex) {
             // Cache failures must not stop ingestion; the source of truth is TimescaleDB.
             long failures = cacheFailures.incrementAndGet();
@@ -109,7 +112,7 @@ public class MarketTickService {
 
     private void writeBackToCache(String symbol, double price) {
         try {
-            redisTemplate.opsForValue().set(LATEST_KEY_PREFIX + symbol, Double.toString(price));
+            setLatestPriceInCache(symbol, price);
         } catch (RuntimeException ex) {
             // Best-effort write-back; never fail a read because the cache couldn't be refreshed.
             cacheFailures.incrementAndGet();
