@@ -12,6 +12,10 @@ spring:
               uri: lb://market-data-service
               predicates:
                 - Path=/api/market-data/**
+            - id: execution-service
+              uri: lb://execution-service
+              predicates:
+                - Path=/api/execution/**
 eureka:
   client:
     service-url:

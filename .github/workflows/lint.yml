@@ -56,7 +56,7 @@ jobs:
       - name: Run SpotBugs on all Java services (report-only)
         run: |
           set -e
-          for svc in eureka-server config-server api-gateway market-data-service; do
+          for svc in eureka-server config-server api-gateway market-data-service execution-service; do
             echo "::group::SpotBugs :: $svc"
             mvn -B -ntp -f "services/$svc/pom.xml" \
               com.github.spotbugs:spotbugs-maven-plugin:4.8.6.0:spotbugs \
