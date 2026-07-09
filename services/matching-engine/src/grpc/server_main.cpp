@@ -45,7 +45,12 @@ int main() {
     ledgerbull::grpc_server::MatchingEngineServiceImpl service(&engine);
 
     grpc::EnableDefaultHealthCheckService(true);
+    // Server reflection lets grpcurl discover services without a local .proto file.
     grpc::reflection::InitProtoReflectionServerBuilderPlugin();
+
+    std::cout << "  reflection: enabled\n";
+    std::cout << "  service:    ledgerbull.api.MatchingEngine\n";
+    std::cout << "              (proto package ledgerbull.api — use this name with grpcurl)\n";
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort(listen_addr, grpc::InsecureServerCredentials());

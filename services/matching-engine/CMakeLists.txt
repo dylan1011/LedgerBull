@@ -83,6 +83,6 @@ if(LEDGERBULL_BUILD_GRPC)
   target_link_libraries(matching_engine_server PRIVATE
     order_book
     matching_engine_proto
-    gRPC::grpc++_reflection)
+    gRPC::grpc++_reflection)  # required for grpcurl service discovery
   target_compile_options(matching_engine_server PRIVATE -Wall -Wextra -Wpedantic)
 endif()
