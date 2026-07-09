@@ -43,7 +43,7 @@ int main() {
 
     std::cout << "\nBook after sweep:\n" << book.to_string() << "\n";
 
-    // Cancel the leftover ask level partially? Actually after sweep, ask id=2 has qty 2 left.
+    // After sweep, ask id=2 has qty 2 left at 106.
     std::cout << "Cancelling resting ask id=2 (qty 2 remaining at 106)...\n";
     book.cancel_order(2);
     std::cout << "\nBook after cancel:\n" << book.to_string();

@@ -8,7 +8,7 @@
 
 namespace ledgerbull {
 
-/// One append-only event record (JSON-per-line on disk).
+/// One append-only event record (pipe-delimited, one line per event on disk).
 enum class EventType { SUBMIT, CANCEL };
 
 struct EngineEvent {
@@ -50,12 +50,12 @@ private:
     std::uint64_t next_index_{1};
 
     void ensure_open();
+    void append_line(const std::string& line);
     void scan_next_index();
     static std::string checksum_for(const std::string& payload);
     static std::string serialize_submit(std::uint64_t index, const Order& order, Sequence seq);
     static std::string serialize_cancel(std::uint64_t index, OrderId order_id);
     static bool parse_line(const std::string& line, EngineEvent* out, std::string* checksum_out);
-    static bool verify_checksum(const std::string& payload, const std::string& checksum);
 };
 
 }  // namespace ledgerbull

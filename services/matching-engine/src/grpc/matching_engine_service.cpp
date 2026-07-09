@@ -2,7 +2,6 @@
 
 #include "ledgerbull/matching_engine.hpp"
 
-#include <cstdlib>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -55,22 +54,7 @@ std::optional<OrderType> to_engine_type(ProtoOrderType type, std::string* err) {
     }
 }
 
-bool order_exists(const ledgerbull::MatchingEngine& engine, OrderId id) {
-    for (const Order& o : engine.book().get_bids()) {
-        if (o.order_id == id) {
-            return true;
-        }
-    }
-    for (const Order& o : engine.book().get_asks()) {
-        if (o.order_id == id) {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::optional<Quantity> resting_quantity_for(const ledgerbull::MatchingEngine& engine,
-                                             OrderId id) {
+std::optional<Quantity> find_resting_order(const ledgerbull::MatchingEngine& engine, OrderId id) {
     for (const Order& o : engine.book().get_bids()) {
         if (o.order_id == id) {
             return o.quantity;
@@ -120,7 +104,7 @@ MatchingEngineServiceImpl::MatchingEngineServiceImpl(ledgerbull::MatchingEngine*
         return ::grpc::Status::OK;
     }
 
-    if (order_exists(*engine_, *order_id)) {
+    if (find_resting_order(*engine_, *order_id)) {
         response->set_accepted(false);
         response->set_reject_reason("duplicate order_id already resting in book");
         return ::grpc::Status::OK;
@@ -166,7 +150,7 @@ MatchingEngineServiceImpl::MatchingEngineServiceImpl(ledgerbull::MatchingEngine*
         out->set_symbol(fill.symbol);
     }
 
-    if (const auto resting = resting_quantity_for(*engine_, *order_id)) {
+    if (const auto resting = find_resting_order(*engine_, *order_id)) {
         response->set_resting_quantity(*resting);
     } else {
         response->set_resting_quantity(0);

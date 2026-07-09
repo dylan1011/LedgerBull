@@ -7,7 +7,6 @@ using ledgerbull::MatchingEngine;
 using ledgerbull::Order;
 using ledgerbull::OrderType;
 using ledgerbull::Side;
-using ledgerbull::books_equal;
 
 int main() {
     const std::string log_path = "./data/demo-crash-recovery.log";

@@ -39,7 +39,4 @@ private:
     void apply_event(const EngineEvent& event);
 };
 
-/// Compare two books for identical resting state (bids, asks, ids, qty, sequence).
-bool books_equal(const OrderBook& a, const OrderBook& b);
-
 }  // namespace ledgerbull

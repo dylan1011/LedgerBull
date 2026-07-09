@@ -12,7 +12,6 @@ using ledgerbull::Order;
 using ledgerbull::OrderBook;
 using ledgerbull::OrderType;
 using ledgerbull::Side;
-using ledgerbull::books_equal;
 
 namespace {
 

@@ -79,8 +79,17 @@ std::string EventLog::checksum_for(const std::string& payload) {
     return std::to_string(std::hash<std::string>{}(payload));
 }
 
-bool EventLog::verify_checksum(const std::string& payload, const std::string& checksum) {
-    return checksum_for(payload) == checksum;
+void EventLog::append_line(const std::string& line) {
+    std::ofstream out(path_, std::ios::app);
+    if (!out) {
+        throw std::runtime_error("failed to open event log for append: " + path_);
+    }
+    out << line << '\n';
+    // Write-ahead durability: flush before the book is mutated (see append_submit).
+    out.flush();
+    if (!out) {
+        throw std::runtime_error("failed to flush event log: " + path_);
+    }
 }
 
 std::string EventLog::serialize_submit(std::uint64_t index, const Order& order, Sequence seq) {
@@ -109,38 +118,14 @@ void EventLog::ensure_open() {
 std::uint64_t EventLog::append_submit(const Order& order, Sequence sequence) {
     ensure_open();
     const std::uint64_t index = next_index_++;
-    const std::string line = serialize_submit(index, order, sequence);
-
-    std::ofstream out(path_, std::ios::app);
-    if (!out) {
-        throw std::runtime_error("failed to open event log for append: " + path_);
-    }
-    out << line << '\n';
-    // Write-ahead durability: flush pushes the record to the OS before the book is
-    // mutated. We use flush (not fsync) as a practical middle ground — sufficient for
-    // process-crash recovery on persistent storage; fsync would be safer against power
-    // loss but slower per event.
-    out.flush();
-    if (!out) {
-        throw std::runtime_error("failed to flush event log: " + path_);
-    }
+    append_line(serialize_submit(index, order, sequence));
     return index;
 }
 
 std::uint64_t EventLog::append_cancel(OrderId order_id) {
     ensure_open();
     const std::uint64_t index = next_index_++;
-    const std::string line = serialize_cancel(index, order_id);
-
-    std::ofstream out(path_, std::ios::app);
-    if (!out) {
-        throw std::runtime_error("failed to open event log for append: " + path_);
-    }
-    out << line << '\n';
-    out.flush();
-    if (!out) {
-        throw std::runtime_error("failed to flush event log: " + path_);
-    }
+    append_line(serialize_cancel(index, order_id));
     return index;
 }
 
@@ -171,7 +156,7 @@ bool EventLog::parse_line(const std::string& line, EngineEvent* out, std::string
             payload << parts[0] << '|' << parts[1] << '|' << parts[2] << '|' << parts[3]
                     << '|' << parts[4] << '|' << parts[5] << '|' << parts[6] << '|'
                     << parts[7] << '|' << parts[8];
-            return verify_checksum(payload.str(), *checksum_out);
+            return checksum_for(payload.str()) == *checksum_out;
         }
         if (type == "CANCEL") {
             if (parts.size() != 4) {
@@ -183,7 +168,7 @@ bool EventLog::parse_line(const std::string& line, EngineEvent* out, std::string
 
             std::ostringstream payload;
             payload << parts[0] << '|' << parts[1] << '|' << parts[2];
-            return verify_checksum(payload.str(), *checksum_out);
+            return checksum_for(payload.str()) == *checksum_out;
         }
     } catch (const std::exception&) {
         return false;
