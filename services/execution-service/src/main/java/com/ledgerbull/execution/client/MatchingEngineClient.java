@@ -23,7 +23,7 @@ public class MatchingEngineClient {
         this.stub = stub;
     }
 
-    public SubmitOrderResponse submitOrder(
+    public EngineSubmitResult submitOrder(
             String orderId,
             String symbol,
             String side,
@@ -44,7 +44,7 @@ public class MatchingEngineClient {
             }
 
             MatchingEngineOuterClass.SubmitOrderResponse response = stub.submitOrder(builder.build());
-            return mapSubmitResponse(response);
+            return mapSubmitResult(response);
         } catch (StatusRuntimeException ex) {
             if (isUnreachable(ex)) {
                 throw new EngineUnavailableException("matching engine unreachable", ex);
@@ -104,21 +104,30 @@ public class MatchingEngineClient {
                 : MatchingEngineOuterClass.OrderType.MARKET;
     }
 
-    private static SubmitOrderResponse mapSubmitResponse(
+    private static EngineSubmitResult mapSubmitResult(
             MatchingEngineOuterClass.SubmitOrderResponse response) {
-        List<FillResponse> fills = response.getFillsList().stream()
-                .map(fill -> new FillResponse(
+        List<EngineFill> engineFills = response.getFillsList().stream()
+                .map(fill -> new EngineFill(
                         fill.getTakerOrderId(),
                         fill.getMakerOrderId(),
-                        PriceConverter.fromTicks(fill.getPrice()),
-                        fill.getQuantity(),
-                        fill.getSymbol()))
+                        fill.getSymbol(),
+                        fill.getPrice(),
+                        fill.getQuantity()))
                 .toList();
-        return new SubmitOrderResponse(
+        List<FillResponse> fills = engineFills.stream()
+                .map(fill -> new FillResponse(
+                        fill.takerOrderId(),
+                        fill.makerOrderId(),
+                        PriceConverter.fromTicks(fill.priceTicks()),
+                        fill.quantity(),
+                        fill.symbol()))
+                .toList();
+        SubmitOrderResponse apiResponse = new SubmitOrderResponse(
                 fills,
                 response.getRestingQuantity(),
                 response.getAccepted(),
                 response.getRejectReason());
+        return new EngineSubmitResult(apiResponse, engineFills);
     }
 
     private static List<BookLevelResponse> mapLevels(List<MatchingEngineOuterClass.BookLevel> levels) {

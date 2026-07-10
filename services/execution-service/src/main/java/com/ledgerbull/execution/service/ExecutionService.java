@@ -1,13 +1,18 @@
 package com.ledgerbull.execution.service;
 
+import com.ledgerbull.execution.client.EngineFill;
+import com.ledgerbull.execution.client.EngineSubmitResult;
 import com.ledgerbull.execution.client.MatchingEngineClient;
+import com.ledgerbull.execution.entity.FillEntity;
 import com.ledgerbull.execution.entity.OrderEntity;
+import com.ledgerbull.execution.repository.FillRepository;
 import com.ledgerbull.execution.repository.OrderRepository;
 import com.ledgerbull.execution.web.error.OrderValidationException;
 import com.ledgerbull.execution.web.dto.BookResponse;
 import com.ledgerbull.execution.web.dto.CancelOrderResponse;
 import com.ledgerbull.execution.web.dto.OrderRequest;
 import com.ledgerbull.execution.web.dto.SubmitOrderResponse;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -16,29 +21,34 @@ public class ExecutionService {
     private final OrderValidationService validationService;
     private final MatchingEngineClient engineClient;
     private final OrderRepository orderRepository;
+    private final FillRepository fillRepository;
 
     public ExecutionService(
             OrderValidationService validationService,
             MatchingEngineClient engineClient,
-            OrderRepository orderRepository) {
+            OrderRepository orderRepository,
+            FillRepository fillRepository) {
         this.validationService = validationService;
         this.engineClient = engineClient;
         this.orderRepository = orderRepository;
+        this.fillRepository = fillRepository;
     }
 
     public SubmitOrderResponse submitOrder(OrderRequest request) {
         OrderValidationService.ValidatedOrder validated = validationService.validate(request);
-        saveNewOrder(validated);
-        return engineClient.submitOrder(
+        OrderEntity savedOrder = saveNewOrder(validated);
+        EngineSubmitResult result = engineClient.submitOrder(
                 validated.orderId(),
                 validated.symbol(),
                 validated.side(),
                 validated.type(),
                 validated.priceTicks(),
                 validated.quantity());
+        saveFills(savedOrder.getId(), result.fills());
+        return result.response();
     }
 
-    private void saveNewOrder(OrderValidationService.ValidatedOrder validated) {
+    private OrderEntity saveNewOrder(OrderValidationService.ValidatedOrder validated) {
         OrderEntity entity = new OrderEntity();
         entity.setOrderId(validated.orderId());
         entity.setSymbol(validated.symbol());
@@ -49,7 +59,20 @@ public class ExecutionService {
         entity.setFilledQuantity(0L);
         entity.setRemainingQuantity(validated.quantity());
         entity.setStatus("NEW");
-        orderRepository.save(entity);
+        return orderRepository.save(entity);
+    }
+
+    private void saveFills(Long orderRefId, List<EngineFill> fills) {
+        for (EngineFill fill : fills) {
+            FillEntity entity = new FillEntity();
+            entity.setOrderRefId(orderRefId);
+            entity.setTakerOrderId(fill.takerOrderId());
+            entity.setMakerOrderId(fill.makerOrderId());
+            entity.setSymbol(fill.symbol());
+            entity.setFillPrice(fill.priceTicks());
+            entity.setFillQuantity(fill.quantity());
+            fillRepository.save(entity);
+        }
     }
 
     public CancelOrderResponse cancelOrder(String orderId) {

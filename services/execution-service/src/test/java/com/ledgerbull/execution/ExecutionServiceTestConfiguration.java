@@ -1,5 +1,6 @@
 package com.ledgerbull.execution;
 
+import com.ledgerbull.execution.repository.FillRepository;
 import com.ledgerbull.execution.repository.OrderRepository;
 import org.mockito.Mockito;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -13,5 +14,11 @@ public class ExecutionServiceTestConfiguration {
     @Primary
     OrderRepository orderRepository() {
         return Mockito.mock(OrderRepository.class);
+    }
+
+    @Bean
+    @Primary
+    FillRepository fillRepository() {
+        return Mockito.mock(FillRepository.class);
     }
 }
