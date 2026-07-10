@@ -3,6 +3,21 @@ server:
 spring:
   application:
     name: execution-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:ledgerbull_execution}
+    username: ${DB_USER:ledgerbull}
+    password: ${DB_PASSWORD:ledgerbull}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate      # schema managed by Flyway in later sub-phases
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
 eureka:
   client:
     service-url:
