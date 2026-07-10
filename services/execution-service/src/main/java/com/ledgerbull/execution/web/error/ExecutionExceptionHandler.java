@@ -19,6 +19,11 @@ public class ExecutionExceptionHandler {
                 .body(new ErrorResponse(ex.getMessage()));
     }
 
+    @ExceptionHandler(EngineRejectedException.class)
+    public ResponseEntity<ErrorResponse> handleEngineRejected(EngineRejectedException ex) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(ex.getMessage()));
+    }
+
     public record ErrorResponse(String error) {
     }
 }

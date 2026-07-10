@@ -7,16 +7,22 @@ import com.ledgerbull.execution.entity.FillEntity;
 import com.ledgerbull.execution.entity.OrderEntity;
 import com.ledgerbull.execution.repository.FillRepository;
 import com.ledgerbull.execution.repository.OrderRepository;
+import com.ledgerbull.execution.web.error.EngineRejectedException;
+import com.ledgerbull.execution.web.error.EngineUnavailableException;
 import com.ledgerbull.execution.web.error.OrderValidationException;
 import com.ledgerbull.execution.web.dto.BookResponse;
 import com.ledgerbull.execution.web.dto.CancelOrderResponse;
 import com.ledgerbull.execution.web.dto.OrderRequest;
 import com.ledgerbull.execution.web.dto.SubmitOrderResponse;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ExecutionService {
+
+    private static final Logger log = LoggerFactory.getLogger(ExecutionService.class);
 
     private final OrderValidationService validationService;
     private final MatchingEngineClient engineClient;
@@ -37,15 +43,26 @@ public class ExecutionService {
     public SubmitOrderResponse submitOrder(OrderRequest request) {
         OrderValidationService.ValidatedOrder validated = validationService.validate(request);
         OrderEntity savedOrder = saveNewOrder(validated);
-        EngineSubmitResult result = engineClient.submitOrder(
-                validated.orderId(),
-                validated.symbol(),
-                validated.side(),
-                validated.type(),
-                validated.priceTicks(),
-                validated.quantity());
-        saveFills(savedOrder.getId(), result.fills());
-        return result.response();
+        try {
+            EngineSubmitResult result = engineClient.submitOrder(
+                    validated.orderId(),
+                    validated.symbol(),
+                    validated.side(),
+                    validated.type(),
+                    validated.priceTicks(),
+                    validated.quantity());
+            if (!result.response().accepted()) {
+                String reason = result.response().reject_reason();
+                markOrderRejected(savedOrder, reason);
+                throw new EngineRejectedException(
+                        reason != null && !reason.isBlank() ? reason : "order rejected by matching engine");
+            }
+            saveFills(savedOrder.getId(), result.fills());
+            return result.response();
+        } catch (EngineUnavailableException ex) {
+            markOrderRejected(savedOrder, ex.getMessage());
+            throw ex;
+        }
     }
 
     private OrderEntity saveNewOrder(OrderValidationService.ValidatedOrder validated) {
@@ -60,6 +77,17 @@ public class ExecutionService {
         entity.setRemainingQuantity(validated.quantity());
         entity.setStatus("NEW");
         return orderRepository.save(entity);
+    }
+
+    private void markOrderRejected(OrderEntity order, String reason) {
+        if (!"NEW".equals(order.getStatus())) {
+            return;
+        }
+        order.setStatus("REJECTED");
+        orderRepository.save(order);
+        if (reason != null && !reason.isBlank()) {
+            log.info("Order {} rejected: {}", order.getOrderId(), reason);
+        }
     }
 
     private void saveFills(Long orderRefId, List<EngineFill> fills) {
