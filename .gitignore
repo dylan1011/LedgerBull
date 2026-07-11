@@ -8,7 +8,6 @@ target/
 venv/
 __pycache__/
 *.pyc
-.env
 
 # Node
 node_modules/
@@ -20,26 +19,7 @@ build/
 *.o
 *.out
 
-# IDE
-.idea/
-.vscode/
-*.iml
-
 # Secrets — never commit
-.env
-*.env
-secrets/
-application-local.yml
-
-# Data files (do not commit large datasets)
-*.csv
-*.parquet
-data/
-
-# OS
-.DS_Store
-
-# === Secrets & sensitive config (never commit) ===
 .env
 .env.*
 *.env
@@ -59,15 +39,18 @@ config/secrets/
 .aws/
 .ssh/
 
-# Data files (may contain sensitive/large data)
+# Data files (do not commit large/sensitive datasets)
 data/
 *.csv
 *.parquet
 
-# OS / IDE
-.DS_Store
+# IDE
 .idea/
 .vscode/
+*.iml
+
+# OS
+.DS_Store
 
 # Local verification scripts (not for repo)
 scripts/
