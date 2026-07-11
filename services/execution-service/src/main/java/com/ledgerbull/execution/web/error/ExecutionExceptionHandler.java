@@ -34,6 +34,11 @@ public class ExecutionExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(ex.getMessage()));
     }
 
+    @ExceptionHandler(OrderDuplicateException.class)
+    public ResponseEntity<ErrorResponse> handleOrderDuplicate(OrderDuplicateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(ex.getMessage()));
+    }
+
     public record ErrorResponse(String error) {
     }
 }

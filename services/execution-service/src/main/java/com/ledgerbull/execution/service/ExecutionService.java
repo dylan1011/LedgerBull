@@ -10,6 +10,7 @@ import com.ledgerbull.execution.repository.OrderRepository;
 import com.ledgerbull.execution.web.error.EngineRejectedException;
 import com.ledgerbull.execution.web.error.EngineUnavailableException;
 import com.ledgerbull.execution.web.error.OrderCancelConflictException;
+import com.ledgerbull.execution.web.error.OrderDuplicateException;
 import com.ledgerbull.execution.web.error.OrderNotFoundException;
 import com.ledgerbull.execution.web.error.OrderValidationException;
 import com.ledgerbull.execution.web.dto.BookResponse;
@@ -33,19 +34,19 @@ public class ExecutionService {
     private final MatchingEngineClient engineClient;
     private final OrderRepository orderRepository;
     private final FillRepository fillRepository;
-    private final OrderStateService orderStateService;
+    private final OrderMatchPersistenceService matchPersistenceService;
 
     public ExecutionService(
             OrderValidationService validationService,
             MatchingEngineClient engineClient,
             OrderRepository orderRepository,
             FillRepository fillRepository,
-            OrderStateService orderStateService) {
+            OrderMatchPersistenceService matchPersistenceService) {
         this.validationService = validationService;
         this.engineClient = engineClient;
         this.orderRepository = orderRepository;
         this.fillRepository = fillRepository;
-        this.orderStateService = orderStateService;
+        this.matchPersistenceService = matchPersistenceService;
     }
 
     public SubmitOrderResponse submitOrder(OrderRequest request) {
@@ -65,9 +66,7 @@ public class ExecutionService {
                 throw new EngineRejectedException(
                         reason != null && !reason.isBlank() ? reason : "order rejected by matching engine");
             }
-            saveFills(savedOrder.getId(), result.fills());
-            orderStateService.applyFillsToSubmittingOrder(savedOrder, result.fills());
-            orderStateService.applyFillsToMakerOrders(result.fills());
+            matchPersistenceService.persistMatchResults(savedOrder, result.fills());
             return result.response();
         } catch (EngineUnavailableException ex) {
             markOrderRejected(savedOrder, ex.getMessage());
@@ -76,6 +75,9 @@ public class ExecutionService {
     }
 
     private OrderEntity saveNewOrder(OrderValidationService.ValidatedOrder validated) {
+        if (orderRepository.findByOrderId(validated.orderId()).isPresent()) {
+            throw new OrderDuplicateException("order_id already exists: " + validated.orderId());
+        }
         OrderEntity entity = new OrderEntity();
         entity.setOrderId(validated.orderId());
         entity.setSymbol(validated.symbol());
@@ -97,19 +99,6 @@ public class ExecutionService {
         orderRepository.save(order);
         if (reason != null && !reason.isBlank()) {
             log.info("Order {} rejected: {}", order.getOrderId(), reason);
-        }
-    }
-
-    private void saveFills(Long orderRefId, List<EngineFill> fills) {
-        for (EngineFill fill : fills) {
-            FillEntity entity = new FillEntity();
-            entity.setOrderRefId(orderRefId);
-            entity.setTakerOrderId(fill.takerOrderId());
-            entity.setMakerOrderId(fill.makerOrderId());
-            entity.setSymbol(fill.symbol());
-            entity.setFillPrice(fill.priceTicks());
-            entity.setFillQuantity(fill.quantity());
-            fillRepository.save(entity);
         }
     }
 

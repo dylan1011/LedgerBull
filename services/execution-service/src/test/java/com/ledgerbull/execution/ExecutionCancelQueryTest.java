@@ -3,6 +3,8 @@ package com.ledgerbull.execution;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,10 +14,12 @@ import com.ledgerbull.execution.entity.OrderEntity;
 import com.ledgerbull.execution.repository.FillRepository;
 import com.ledgerbull.execution.repository.OrderRepository;
 import com.ledgerbull.execution.service.ExecutionService;
-import com.ledgerbull.execution.service.OrderStateService;
+import com.ledgerbull.execution.service.OrderMatchPersistenceService;
 import com.ledgerbull.execution.service.OrderValidationService;
 import com.ledgerbull.execution.web.dto.CancelOrderResponse;
+import com.ledgerbull.execution.web.dto.OrderRequest;
 import com.ledgerbull.execution.web.error.OrderCancelConflictException;
+import com.ledgerbull.execution.web.error.OrderDuplicateException;
 import com.ledgerbull.execution.web.error.OrderNotFoundException;
 import java.util.List;
 import java.util.Optional;
@@ -38,7 +42,7 @@ class ExecutionCancelQueryTest {
     private FillRepository fillRepository;
 
     @Mock
-    private OrderStateService orderStateService;
+    private OrderMatchPersistenceService matchPersistenceService;
 
     private ExecutionService executionService;
 
@@ -49,7 +53,16 @@ class ExecutionCancelQueryTest {
                 engineClient,
                 orderRepository,
                 fillRepository,
-                orderStateService);
+                matchPersistenceService);
+    }
+
+    @Test
+    void duplicateOrderIdReturnsConflict() {
+        when(orderRepository.findByOrderId("99")).thenReturn(Optional.of(newOrder("99")));
+
+        assertThrows(OrderDuplicateException.class, () -> executionService.submitOrder(new OrderRequest(
+                "99", "BTC-USD", "SELL", "LIMIT", 100.0, 5L)));
+        verify(engineClient, never()).submitOrder(anyString(), anyString(), anyString(), anyString(), anyLong(), anyLong());
     }
 
     @Test
