@@ -3,8 +3,11 @@ package com.ledgerbull.position.web;
 import com.ledgerbull.position.entity.ProcessedFillEntity;
 import com.ledgerbull.position.repository.ProcessedFillRepository;
 import com.ledgerbull.position.service.FillIngestionService;
+import com.ledgerbull.position.service.PositionService;
 import com.ledgerbull.position.web.dto.IngestFillsResponse;
+import com.ledgerbull.position.web.dto.PositionSummaryResponse;
 import com.ledgerbull.position.web.dto.ProcessedFillResponse;
+import com.ledgerbull.position.web.dto.RecomputePositionsResponse;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,17 +21,31 @@ import org.springframework.web.bind.annotation.RestController;
 public class PositionController {
 
     private final FillIngestionService fillIngestionService;
+    private final PositionService positionService;
     private final ProcessedFillRepository processedFillRepository;
 
     public PositionController(
-            FillIngestionService fillIngestionService, ProcessedFillRepository processedFillRepository) {
+            FillIngestionService fillIngestionService,
+            PositionService positionService,
+            ProcessedFillRepository processedFillRepository) {
         this.fillIngestionService = fillIngestionService;
+        this.positionService = positionService;
         this.processedFillRepository = processedFillRepository;
     }
 
     @PostMapping("/ingest-fills")
     public ResponseEntity<IngestFillsResponse> ingestFills() {
         return ResponseEntity.ok(fillIngestionService.ingestFills());
+    }
+
+    @PostMapping("/recompute")
+    public ResponseEntity<RecomputePositionsResponse> recomputePositions() {
+        return ResponseEntity.ok(positionService.recomputePositions());
+    }
+
+    @GetMapping
+    public ResponseEntity<List<PositionSummaryResponse>> listPositions() {
+        return ResponseEntity.ok(positionService.listPositions());
     }
 
     @GetMapping("/processed-fills")
@@ -48,6 +65,7 @@ public class PositionController {
                 entity.getSymbol(),
                 entity.getFillPrice(),
                 entity.getFillQuantity(),
+                entity.getTakerSide(),
                 entity.getIngestedAt().toString());
     }
 }

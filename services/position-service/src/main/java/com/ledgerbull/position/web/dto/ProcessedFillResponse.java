@@ -7,5 +7,6 @@ public record ProcessedFillResponse(
         String symbol,
         long fill_price,
         long fill_quantity,
+        String taker_side,
         String ingested_at) {
 }

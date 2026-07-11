@@ -1,5 +1,6 @@
 package com.ledgerbull.position.client;
 
+import com.ledgerbull.position.client.dto.ExecutionIngestFill;
 import com.ledgerbull.position.client.dto.ExecutionOrderDetail;
 import com.ledgerbull.position.client.dto.ExecutionOrderFill;
 import com.ledgerbull.position.client.dto.ExecutionOrderPage;
@@ -36,11 +37,20 @@ public class ExecutionClient {
                 orderIds.addAll(listOrderIds(status));
             }
 
-            List<ExecutionOrderFill> fills = new ArrayList<>();
+            List<ExecutionIngestFill> fills = new ArrayList<>();
             for (String orderId : orderIds) {
                 ExecutionOrderDetail detail = fetchOrder(orderId);
                 if (detail != null && detail.fills() != null) {
-                    fills.addAll(detail.fills());
+                    for (ExecutionOrderFill fill : detail.fills()) {
+                        fills.add(new ExecutionIngestFill(
+                                fill.taker_order_id(),
+                                fill.maker_order_id(),
+                                fill.symbol(),
+                                fill.price(),
+                                fill.quantity(),
+                                detail.side(),
+                                fill.created_at()));
+                    }
                 }
             }
             return ExecutionFillsFetchResult.success(fills);

@@ -1,7 +1,8 @@
 package com.ledgerbull.position.service;
 
-import com.ledgerbull.position.client.dto.ExecutionOrderFill;
+import com.ledgerbull.position.client.dto.ExecutionIngestFill;
 import com.ledgerbull.position.entity.ProcessedFillEntity;
+import com.ledgerbull.position.money.Money;
 import com.ledgerbull.position.repository.ProcessedFillRepository;
 import com.ledgerbull.position.web.dto.IngestFillsResponse;
 import java.util.HashSet;
@@ -25,14 +26,14 @@ public class ProcessedFillWriter {
     }
 
     @Transactional
-    public IngestFillsResponse persistNewFills(List<ExecutionOrderFill> fills) {
+    public IngestFillsResponse persistNewFills(List<ExecutionIngestFill> fills) {
         int seen = 0;
         int ingested = 0;
         int duplicates = 0;
         Set<String> seenKeys = new HashSet<>();
 
-        for (ExecutionOrderFill fill : fills) {
-            long fillPriceTicks = PriceConverter.toTicks(fill.price());
+        for (ExecutionIngestFill fill : fills) {
+            long fillPriceTicks = Money.toTicks(fill.price());
             String sourceFillId = FillIdempotencyKey.fromComposite(
                     fill.taker_order_id(),
                     fill.maker_order_id(),
@@ -57,6 +58,7 @@ public class ProcessedFillWriter {
             entity.setSymbol(fill.symbol());
             entity.setFillPrice(fillPriceTicks);
             entity.setFillQuantity(fill.quantity());
+            entity.setTakerSide(fill.taker_side());
 
             try {
                 processedFillRepository.save(entity);
