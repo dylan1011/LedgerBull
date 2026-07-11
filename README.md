@@ -1,23 +1,23 @@
 # LedgerBull
 
-**LedgerBull** is a real-time trading & risk platform: it ingests live market data, turns it into order flow, matches orders through a low-latency engine, and (in later phases) monitors risk continuously — built as parallel microservices across Java, C++, Python, and Next.js.
+**LedgerBull** is a real-time trading & risk platform: it ingests live market data, validates and matches orders through a low-latency engine, tracks their full execution lifecycle, and (in later phases) monitors positions and risk — built as parallel microservices across C++, Java, and (later) Python.
 
-> **Note:** This is a demonstration platform built on free-tier infrastructure. It uses real market data and a genuine matching engine, but it does **not** execute real trades (that would require broker-dealer licensing). It's designed to demonstrate production-grade engineering practices, not to operate as a live exchange.
+> **Scope note:** This is a demonstration platform built on free-tier infrastructure. It uses real market data and a genuine matching engine, but does **not** execute real trades (that requires broker-dealer licensing). It demonstrates production-grade engineering practices and the architecture of a real trading system.
 
-> **Environment:** macOS (Apple Silicon, Homebrew). Hosting targets: Oracle Cloud Always Free (backend), Vercel (frontend), Cloudflare (edge/backups).
+> **Environment:** macOS (Apple Silicon). Hosting targets: Oracle Cloud Always Free (backend), Vercel (frontend), Cloudflare (edge/backups).
 
 ---
 
 ## Status
 
-**Completed and verified through Phase 2** — the full trading core works end to end: live market data in → order validated → matched by the C++ engine → fill returned, crash-safe and networked across two languages.
+**Completed and verified through Phase 3** — the full execution lifecycle works end to end: live market data in → order validated → matched by the C++ engine → order & fills persisted → order state tracked (both sides of every trade) → queryable and cancellable.
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 0 | Project scaffolding | ✅ Complete |
-| 1 | Spring Cloud foundation + live market data (hardened, secured) | ✅ Complete |
-| 2 | Matching engine (order book, matching, crash recovery, gRPC) + execution service | ✅ Complete |
-| 3 | Execution lifecycle (order state management) | ⬜ Planned |
+| 0 | Project scaffolding & tooling | ✅ Complete |
+| 1 | Spring Cloud foundation + live market data ingestion | ✅ Complete |
+| 2 | Matching engine (order book, matching, crash recovery, gRPC) + execution | ✅ Complete |
+| 3 | Execution lifecycle — order state machine, persistence, query & cancel | ✅ Complete |
 | 4 | Position & PnL tracking | ⬜ Planned |
 | 5 | Risk engine | ⬜ Planned |
 | 6 | AI/ML signals (Python sidecar) | ⬜ Planned |
@@ -30,24 +30,30 @@
 
 ---
 
-## What's built so far (Phases 0–2)
+## What's built so far (Phases 0–3)
 
 **Phase 0 — Scaffolding.** Monorepo layout, tooling checks, Spring Cloud service skeletons.
 
 **Phase 1 — Foundation + live market data.**
 - Spring Cloud stack: Eureka (service discovery), Config Server, API Gateway.
 - Market Data Service ingests **live crypto data** over a secure `wss://` websocket into **TimescaleDB** (time-series), with **Redis** as a cache.
-- Hardened: websocket auto-reconnect with backoff, graceful degradation (a Redis outage does not take the service down — reads fall back to TimescaleDB), batched inserts, data retention policy, auto-restart.
+- Hardened: websocket auto-reconnect with backoff, graceful degradation (a Redis outage does not take the service down — reads fall back to TimescaleDB), batched inserts, retention policy.
 - Security: secure feed, CI vulnerability scanning (Trivy, OWASP Dependency-Check, secret scanning), no tracked secrets.
 
 **Phase 2 — Matching engine + execution.**
-- **Matching engine** (C++17, in `services/matching-engine/`), built as four layers:
-  - *Order book* — price-time priority using ordered maps per side, FIFO queues per price level, and an index for O(1) cancels. Integer tick prices (no floating point).
-  - *Matching* — limit & market orders, partial fills, multi-level sweeps, maker-price execution, price-time priority.
-  - *Crash recovery* — event sourcing: a write-ahead append-only log on disk; the book is rebuilt by replaying the log on startup.
-  - *gRPC server* — exposes the engine over the network (service `ledgerbull.api.MatchingEngine`), with reflection enabled.
-- **Execution Service** (Java/Spring Boot) — validates orders (rejecting invalid ones before they reach the engine), submits valid ones to the C++ engine over gRPC, and returns the resulting fills. Exposes REST endpoints and registers with Eureka.
-- Verified end to end: an order submitted via REST is validated in Java, matched by the C++ engine, and the fill returned — crash-safe and cross-language.
+- **Matching engine** (C++17, `services/matching-engine/`), four layers:
+  - *Order book* — price-time priority using ordered maps per side, FIFO queues per level, and an index for O(1) cancels. Integer tick prices (no floating point).
+  - *Matching* — limit & market orders, partial fills, multi-level sweeps, maker-price execution.
+  - *Crash recovery* — event sourcing: a write-ahead append-only log; the book is rebuilt by replaying the log on startup.
+  - *gRPC server* — exposes the engine over the network (`ledgerbull.api.MatchingEngine`), reflection enabled.
+- **Execution Service** (Java/Spring Boot) — validates orders, submits valid ones to the C++ engine over gRPC, returns fills. Eureka-registered.
+
+**Phase 3 — Execution lifecycle.**
+- **PostgreSQL persistence** (separate from the market-data TimescaleDB) for orders and fills, with Flyway-managed schema migrations.
+- **Order state machine** — NEW → PARTIALLY_FILLED → FILLED, plus CANCELLED and REJECTED, with enforced valid transitions.
+- **Save-on-accept** — every accepted order is recorded before the engine call; an unreachable/rejecting engine leaves the order as REJECTED, so no accepted order is ever silently lost.
+- **Both-sides tracking** — when a taker order matches resting maker orders, both the taker and the makers have their status and quantities updated, with maker fills accumulating correctly across multiple matches.
+- **Query & cancel** — `GET /orders/{id}` (with fills), `GET /orders?symbol=&status=` (filtered, paginated), and a guarded cancel endpoint (only NEW/PARTIALLY_FILLED → CANCELLED). Prices are returned human-readable; stored as integer ticks.
 
 ---
 
@@ -58,8 +64,11 @@
 | Backend / microservices | Java 21 + Spring Boot 3.x | ✅ In use |
 | Matching engine core | C++17 (STL, gRPC/protobuf) | ✅ In use |
 | Service mesh | Spring Cloud (Eureka, Gateway, Config Server) | ✅ In use |
-| Database | PostgreSQL + TimescaleDB, Redis (cache) | ✅ TimescaleDB + Redis in use |
 | Inter-service (engine) | gRPC + Protocol Buffers | ✅ In use |
+| Relational DB | PostgreSQL 16 (orders, fills) | ✅ In use |
+| Time-series DB | TimescaleDB (market data) | ✅ In use |
+| Cache | Redis | ✅ In use |
+| Migrations | Flyway | ✅ In use |
 | Containerization | Docker + Docker Compose | ✅ In use |
 | CI/CD | GitHub Actions (build, security scan, lint) | ✅ In use |
 | Frontend | Next.js (App Router) + TypeScript + Tailwind | 🚧 Scaffolded |
@@ -68,13 +77,13 @@
 | Observability | Prometheus, Grafana, Zipkin, Loki | ⬜ Planned (Phase 10) |
 | Scaling | Kubernetes (Minikube) + Helm | ⬜ Planned |
 
-Items marked ⬜ are planned for later phases and are **not yet implemented** — listed here to show the intended architecture.
+Items marked ⬜ are planned for later phases and are **not yet implemented** — listed to show the intended architecture.
 
 ---
 
 ## Architecture (matching engine)
 
-The matching engine is a single C++ service with four stacked layers. An order flows down through them; fills flow back up:
+The matching engine is a single C++ service with four stacked layers. An order flows down; fills flow back up:
 
 ```
 Client (Execution Service, Java)
@@ -94,7 +103,7 @@ Client (Execution Service, Java)
 └───────────────────────────────────────────┘
 ```
 
-The in-memory order book is a fast, rebuildable view; the append-only event log on disk is the source of truth (event sourcing). No traditional database on the matching hot path — this is a deliberate latency choice.
+The in-memory order book is a fast, rebuildable view; the append-only event log on disk is the source of truth (event sourcing). No traditional database on the matching hot path — a deliberate latency choice. The surrounding services use real databases (PostgreSQL for orders/fills, TimescaleDB for market data).
 
 ---
 
@@ -110,7 +119,8 @@ The in-memory order book is a fast, rebuildable view; the append-only event log 
 │   ├── api-gateway/               # Spring Cloud Gateway        [built]
 │   ├── market-data-service/       # live market data ingest     [built]
 │   ├── matching-engine/           # C++ order book + matching   [built]
-│   ├── execution-service/         # order validation + submit   [built]
+│   ├── execution-service/         # validation, persistence,    [built]
+│   │                              #   state machine, query/cancel
 │   ├── position-pnl-service/      # positions & PnL            [planned]
 │   ├── risk-service/              # risk engine + Python        [planned]
 │   ├── strategy-signal-service/   # signals + Python           [planned]
@@ -132,10 +142,10 @@ cd infra && docker compose up -d
 
 **2. Start the Spring Cloud services** (each in its own terminal):
 ```bash
-cd services/eureka-server     && mvn spring-boot:run   # 8761
-cd services/config-server     && mvn spring-boot:run   # 8888
-cd services/api-gateway       && mvn spring-boot:run   # 8080
-cd services/market-data-service && mvn spring-boot:run # 8081
+cd services/eureka-server       && mvn spring-boot:run   # 8761
+cd services/config-server       && mvn spring-boot:run   # 8888
+cd services/api-gateway         && mvn spring-boot:run   # 8080
+cd services/market-data-service && mvn spring-boot:run   # 8081
 ```
 
 **3. Build & run the matching engine:**
@@ -143,22 +153,24 @@ cd services/market-data-service && mvn spring-boot:run # 8081
 cd services/matching-engine
 cmake -S . -B build -DCMAKE_PREFIX_PATH="$(brew --prefix)"
 cmake --build build
-./build/matching_engine_server                          # 50051
+./build/matching_engine_server                            # 50051
 ```
 
 **4. Run the execution service:**
 ```bash
-cd services/execution-service && mvn spring-boot:run    # 8082
+cd services/execution-service && mvn spring-boot:run      # 8082
 ```
 
-**5. Try it — submit orders:**
+**5. Try it:**
 ```bash
 # Resting sell
 curl -X POST http://localhost:8082/api/execution/orders -H "Content-Type: application/json" \
   -d '{"order_id":"1","symbol":"BTC-USD","side":"SELL","type":"LIMIT","price":105,"quantity":5}'
-# Crossing buy — returns a fill
+# Crossing buy — returns a fill; both orders become FILLED
 curl -X POST http://localhost:8082/api/execution/orders -H "Content-Type: application/json" \
   -d '{"order_id":"2","symbol":"BTC-USD","side":"BUY","type":"LIMIT","price":105,"quantity":5}'
+# Query the order and its fills
+curl http://localhost:8082/api/execution/orders/2
 ```
 
 ---
@@ -168,3 +180,4 @@ curl -X POST http://localhost:8082/api/execution/orders -H "Content-Type: applic
 - **Real data, simulated execution.** Crypto uses live real-time data; equities (later phases) will use free delayed data as a simulation. No real trades are executed — that requires broker-dealer licensing and is out of scope.
 - **Deliberately deferred to later phases:** TLS/mTLS + auth + rate limiting (Phase 8), circuit breakers + failover (Phase 9), observability (Phase 10), backups (Phase 12).
 - **Known constraints (free single-VM deployment):** the matching engine is currently single-threaded; there is no true high-availability failover (that needs paid multi-node infrastructure); exchange-grade microsecond latency is not a goal on shared free infrastructure. These are documented deliberate trade-offs, not oversights.
+
