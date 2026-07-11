@@ -47,6 +47,24 @@ services:
       retries: 5
     restart: unless-stopped
 
+  position-postgres:
+    image: postgres:16
+    container_name: ledgerbull-position-postgres
+    environment:
+      POSTGRES_USER: ${POSITION_POSTGRES_USER:-ledgerbull}
+      POSTGRES_PASSWORD: ${POSITION_POSTGRES_PASSWORD:-ledgerbull}
+      POSTGRES_DB: ${POSITION_POSTGRES_DB:-ledgerbull_position}
+    ports:
+      - "5434:5432"
+    volumes:
+      - ledgerbull-position-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgerbull -d ledgerbull_position"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   market-data-service:
     build:
       context: ../services/market-data-service
@@ -73,3 +91,4 @@ services:
 volumes:
   timescale_data:
   ledgerbull-postgres-data:
+  ledgerbull-position-postgres-data:

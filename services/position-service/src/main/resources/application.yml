@@ -1,0 +1,25 @@
+server:
+  port: 8083
+spring:
+  application:
+    name: position-service
+  datasource:
+    url: jdbc:postgresql://${POSITION_DB_HOST:localhost}:${POSITION_DB_PORT:5434}/${POSITION_DB_NAME:ledgerbull_position}
+    username: ${POSITION_DB_USER:ledgerbull}
+    password: ${POSITION_DB_PASSWORD:ledgerbull}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

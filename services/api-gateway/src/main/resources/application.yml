@@ -16,6 +16,10 @@ spring:
               uri: lb://execution-service
               predicates:
                 - Path=/api/execution/**
+            - id: position-service
+              uri: lb://position-service
+              predicates:
+                - Path=/api/positions/**
 eureka:
   client:
     service-url:
