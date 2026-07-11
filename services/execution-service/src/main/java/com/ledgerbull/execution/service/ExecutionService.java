@@ -9,14 +9,19 @@ import com.ledgerbull.execution.repository.FillRepository;
 import com.ledgerbull.execution.repository.OrderRepository;
 import com.ledgerbull.execution.web.error.EngineRejectedException;
 import com.ledgerbull.execution.web.error.EngineUnavailableException;
+import com.ledgerbull.execution.web.error.OrderCancelConflictException;
+import com.ledgerbull.execution.web.error.OrderNotFoundException;
 import com.ledgerbull.execution.web.error.OrderValidationException;
 import com.ledgerbull.execution.web.dto.BookResponse;
-import com.ledgerbull.execution.web.dto.CancelOrderResponse;
+import com.ledgerbull.execution.web.dto.OrderDetailResponse;
+import com.ledgerbull.execution.web.dto.OrderPageResponse;
 import com.ledgerbull.execution.web.dto.OrderRequest;
 import com.ledgerbull.execution.web.dto.SubmitOrderResponse;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -108,9 +113,66 @@ public class ExecutionService {
         }
     }
 
-    public CancelOrderResponse cancelOrder(String orderId) {
+    public OrderDetailResponse getOrder(String orderId) {
         validationService.validateCancelOrderId(orderId);
-        return engineClient.cancelOrder(orderId);
+        OrderEntity order = orderRepository
+                .findByOrderId(orderId)
+                .orElseThrow(() -> new OrderNotFoundException("order not found: " + orderId));
+        List<FillEntity> fills = fillRepository.findByOrderRefId(order.getId());
+        return OrderResponseMapper.toDetail(order, fills);
+    }
+
+    public OrderPageResponse listOrders(String symbol, String status, Pageable pageable) {
+        Page<OrderEntity> page = queryOrders(symbol, status, pageable);
+        List<OrderDetailResponse> content = page.getContent().stream()
+                .map(order -> OrderResponseMapper.toDetail(order, List.of()).withoutFills())
+                .toList();
+        return new OrderPageResponse(
+                content,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages());
+    }
+
+    public OrderDetailResponse cancelOrder(String orderId) {
+        validationService.validateCancelOrderId(orderId);
+        OrderEntity order = orderRepository
+                .findByOrderId(orderId)
+                .orElseThrow(() -> new OrderNotFoundException("order not found: " + orderId));
+
+        String status = order.getStatus();
+        if (!status.equals(OrderStatusTransitions.NEW) && !status.equals(OrderStatusTransitions.PARTIALLY_FILLED)) {
+            throw new OrderCancelConflictException("cannot cancel order in status " + status);
+        }
+
+        var engineResponse = engineClient.cancelOrder(orderId);
+        if (!engineResponse.cancelled()) {
+            throw new OrderCancelConflictException("matching engine could not cancel order");
+        }
+
+        if (!OrderStatusTransitions.canTransition(status, OrderStatusTransitions.CANCELLED)) {
+            throw new OrderCancelConflictException("cannot cancel order in status " + status);
+        }
+
+        order.setStatus(OrderStatusTransitions.CANCELLED);
+        orderRepository.save(order);
+        return OrderResponseMapper.toDetail(order, fillRepository.findByOrderRefId(order.getId()));
+    }
+
+    private Page<OrderEntity> queryOrders(String symbol, String status, Pageable pageable) {
+        boolean hasSymbol = symbol != null && !symbol.isBlank();
+        boolean hasStatus = status != null && !status.isBlank();
+        if (hasSymbol && hasStatus) {
+            return orderRepository.findBySymbolAndStatus(symbol.trim(), status.trim(), pageable);
+        }
+        if (hasSymbol) {
+            return orderRepository.findBySymbol(symbol.trim(), pageable);
+        }
+        if (hasStatus) {
+            return orderRepository.findByStatus(status.trim(), pageable);
+        }
+        return orderRepository.findAll(pageable);
     }
 
     public BookResponse queryBook(String symbol) {

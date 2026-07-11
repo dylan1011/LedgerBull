@@ -12,8 +12,8 @@ final class OrderStatusTransitions {
     static final String REJECTED = "REJECTED";
 
     private static final Map<String, Set<String>> ALLOWED = Map.of(
-            NEW, Set.of(NEW, PARTIALLY_FILLED, FILLED, REJECTED),
-            PARTIALLY_FILLED, Set.of(PARTIALLY_FILLED, FILLED),
+            NEW, Set.of(NEW, PARTIALLY_FILLED, FILLED, REJECTED, CANCELLED),
+            PARTIALLY_FILLED, Set.of(PARTIALLY_FILLED, FILLED, CANCELLED),
             FILLED, Set.of(FILLED),
             CANCELLED, Set.of(CANCELLED),
             REJECTED, Set.of(REJECTED));
