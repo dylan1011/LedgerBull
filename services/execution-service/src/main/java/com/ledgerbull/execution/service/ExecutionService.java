@@ -28,16 +28,19 @@ public class ExecutionService {
     private final MatchingEngineClient engineClient;
     private final OrderRepository orderRepository;
     private final FillRepository fillRepository;
+    private final OrderStateService orderStateService;
 
     public ExecutionService(
             OrderValidationService validationService,
             MatchingEngineClient engineClient,
             OrderRepository orderRepository,
-            FillRepository fillRepository) {
+            FillRepository fillRepository,
+            OrderStateService orderStateService) {
         this.validationService = validationService;
         this.engineClient = engineClient;
         this.orderRepository = orderRepository;
         this.fillRepository = fillRepository;
+        this.orderStateService = orderStateService;
     }
 
     public SubmitOrderResponse submitOrder(OrderRequest request) {
@@ -58,6 +61,7 @@ public class ExecutionService {
                         reason != null && !reason.isBlank() ? reason : "order rejected by matching engine");
             }
             saveFills(savedOrder.getId(), result.fills());
+            orderStateService.applyFillsToSubmittingOrder(savedOrder, result.fills());
             return result.response();
         } catch (EngineUnavailableException ex) {
             markOrderRejected(savedOrder, ex.getMessage());
