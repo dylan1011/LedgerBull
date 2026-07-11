@@ -14,6 +14,9 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+execution:
+  host: ${EXECUTION_HOST:localhost}
+  port: ${EXECUTION_PORT:8082}
 eureka:
   client:
     service-url:
