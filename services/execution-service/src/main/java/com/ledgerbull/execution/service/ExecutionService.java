@@ -62,6 +62,7 @@ public class ExecutionService {
             }
             saveFills(savedOrder.getId(), result.fills());
             orderStateService.applyFillsToSubmittingOrder(savedOrder, result.fills());
+            orderStateService.applyFillsToMakerOrders(result.fills());
             return result.response();
         } catch (EngineUnavailableException ex) {
             markOrderRejected(savedOrder, ex.getMessage());

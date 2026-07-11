@@ -5,11 +5,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.when;
 import com.ledgerbull.execution.client.EngineFill;
 import com.ledgerbull.execution.entity.OrderEntity;
 import com.ledgerbull.execution.repository.OrderRepository;
 import com.ledgerbull.execution.service.OrderStateService;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,6 +67,44 @@ class OrderStateServiceTest {
         assertEquals("PARTIALLY_FILLED", order.getStatus());
         assertEquals(3L, order.getFilledQuantity());
         assertEquals(7L, order.getRemainingQuantity());
+    }
+
+    @Test
+    void makerPartialFillAccumulates() {
+        OrderEntity maker = newOrder("maker1", 10L);
+        when(orderRepository.findByOrderId("maker1")).thenReturn(Optional.of(maker));
+
+        orderStateService.applyFillsToMakerOrders(List.of(fill("taker1", "maker1", 4L)));
+
+        assertEquals("PARTIALLY_FILLED", maker.getStatus());
+        assertEquals(4L, maker.getFilledQuantity());
+        assertEquals(6L, maker.getRemainingQuantity());
+    }
+
+    @Test
+    void makerAccumulatesAcrossFills() {
+        OrderEntity maker = newOrder("maker2", 10L);
+        when(orderRepository.findByOrderId("maker2")).thenReturn(Optional.of(maker));
+
+        orderStateService.applyFillsToMakerOrders(List.of(fill("taker1", "maker2", 4L)));
+        maker.setFilledQuantity(4L);
+        maker.setRemainingQuantity(6L);
+        maker.setStatus("PARTIALLY_FILLED");
+
+        orderStateService.applyFillsToMakerOrders(List.of(fill("taker2", "maker2", 6L)));
+
+        assertEquals("FILLED", maker.getStatus());
+        assertEquals(10L, maker.getFilledQuantity());
+        assertEquals(0L, maker.getRemainingQuantity());
+    }
+
+    @Test
+    void missingMakerIsSkippedSafely() {
+        when(orderRepository.findByOrderId("missing")).thenReturn(Optional.empty());
+
+        orderStateService.applyFillsToMakerOrders(List.of(fill("taker1", "missing", 5L)));
+
+        verify(orderRepository, never()).save(any());
     }
 
     @Test
