@@ -39,6 +39,9 @@ public class ProcessedFillEntity {
     @Column(name = "taker_side", length = 8)
     private String takerSide;
 
+    @Column(name = "fill_created_at")
+    private OffsetDateTime fillCreatedAt;
+
     @Column(name = "ingested_at", nullable = false)
     private OffsetDateTime ingestedAt;
 
@@ -111,6 +114,14 @@ public class ProcessedFillEntity {
 
     public void setTakerSide(String takerSide) {
         this.takerSide = takerSide;
+    }
+
+    public OffsetDateTime getFillCreatedAt() {
+        return fillCreatedAt;
+    }
+
+    public void setFillCreatedAt(OffsetDateTime fillCreatedAt) {
+        this.fillCreatedAt = fillCreatedAt;
     }
 
     public OffsetDateTime getIngestedAt() {

@@ -12,6 +12,7 @@ import com.ledgerbull.position.web.dto.PositionSummaryResponse;
 import com.ledgerbull.position.web.dto.RecomputePositionsResponse;
 import com.ledgerbull.position.web.dto.SymbolPositionResponse;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,7 +51,10 @@ public class PositionService {
     public RecomputePositionsResponse recomputePositions() {
         lotRepository.deleteAllInBatch();
 
-        List<ProcessedFillEntity> fills = processedFillRepository.findAllByOrderByIdAsc();
+        List<ProcessedFillEntity> fills = processedFillRepository.findAll();
+        fills.sort(Comparator
+                .comparing(ProcessedFillEntity::getFillCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ProcessedFillEntity::getId, Comparator.nullsLast(Comparator.naturalOrder())));
         Map<String, List<LotEntity>> openLotsBySymbol = new HashMap<>();
         Map<String, Long> netBySymbol = new HashMap<>();
         Map<String, Long> realizedBySymbol = new HashMap<>();

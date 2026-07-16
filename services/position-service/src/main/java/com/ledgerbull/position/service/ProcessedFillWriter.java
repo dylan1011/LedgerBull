@@ -5,6 +5,8 @@ import com.ledgerbull.position.entity.ProcessedFillEntity;
 import com.ledgerbull.position.money.Money;
 import com.ledgerbull.position.repository.ProcessedFillRepository;
 import com.ledgerbull.position.web.dto.IngestFillsResponse;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -59,6 +61,7 @@ public class ProcessedFillWriter {
             entity.setFillPrice(fillPriceTicks);
             entity.setFillQuantity(fill.quantity());
             entity.setTakerSide(fill.taker_side());
+            entity.setFillCreatedAt(parseFillCreatedAt(fill.created_at()));
 
             try {
                 processedFillRepository.save(entity);
@@ -70,5 +73,17 @@ public class ProcessedFillWriter {
         }
 
         return new IngestFillsResponse(seen, ingested, duplicates, true);
+    }
+
+    private static OffsetDateTime parseFillCreatedAt(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(raw);
+        } catch (DateTimeParseException ex) {
+            log.warn("Could not parse fill created_at '{}': {}", raw, ex.getMessage());
+            return null;
+        }
     }
 }

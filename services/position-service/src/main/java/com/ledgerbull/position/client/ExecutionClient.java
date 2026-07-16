@@ -5,7 +5,8 @@ import com.ledgerbull.position.client.dto.ExecutionOrderDetail;
 import com.ledgerbull.position.client.dto.ExecutionOrderFill;
 import com.ledgerbull.position.client.dto.ExecutionOrderPage;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -28,11 +29,12 @@ public class ExecutionClient {
     }
 
     /**
-     * Fetches all fills from execution via its REST API. Marks execution unreachable on connection errors.
+     * Fetches all fills from execution via its REST API, ordered by fill created_at ascending
+     * so FIFO replay can follow trade chronology. Marks execution unreachable on connection errors.
      */
     public ExecutionFillsFetchResult fetchAllFills() {
         try {
-            Set<String> orderIds = new HashSet<>();
+            Set<String> orderIds = new LinkedHashSet<>();
             for (String status : ORDER_STATUSES_WITH_FILLS) {
                 orderIds.addAll(listOrderIds(status));
             }
@@ -53,6 +55,9 @@ public class ExecutionClient {
                     }
                 }
             }
+            fills.sort(Comparator.comparing(
+                    ExecutionIngestFill::created_at,
+                    Comparator.nullsLast(String::compareTo)));
             return ExecutionFillsFetchResult.success(fills);
         } catch (RestClientException ex) {
             log.warn("Execution service unreachable while fetching fills: {}", ex.getMessage());
@@ -61,7 +66,7 @@ public class ExecutionClient {
     }
 
     private Set<String> listOrderIds(String status) {
-        Set<String> orderIds = new HashSet<>();
+        Set<String> orderIds = new LinkedHashSet<>();
         int page = 0;
         int totalPages = 1;
         while (page < totalPages) {
