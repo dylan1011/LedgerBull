@@ -1,6 +1,7 @@
 package com.ledgerbull.position;
 
 import com.ledgerbull.position.client.ExecutionClient;
+import com.ledgerbull.position.repository.LotRepository;
 import com.ledgerbull.position.repository.PositionRepository;
 import com.ledgerbull.position.repository.ProcessedFillRepository;
 import org.mockito.Mockito;
@@ -21,6 +22,12 @@ public class PositionServiceTestConfiguration {
     @Primary
     PositionRepository positionRepository() {
         return Mockito.mock(PositionRepository.class);
+    }
+
+    @Bean
+    @Primary
+    LotRepository lotRepository() {
+        return Mockito.mock(LotRepository.class);
     }
 
     @Bean

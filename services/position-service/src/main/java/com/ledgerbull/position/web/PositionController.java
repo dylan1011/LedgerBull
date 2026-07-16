@@ -5,12 +5,14 @@ import com.ledgerbull.position.repository.ProcessedFillRepository;
 import com.ledgerbull.position.service.FillIngestionService;
 import com.ledgerbull.position.service.PositionService;
 import com.ledgerbull.position.web.dto.IngestFillsResponse;
+import com.ledgerbull.position.web.dto.LotResponse;
 import com.ledgerbull.position.web.dto.PositionSummaryResponse;
 import com.ledgerbull.position.web.dto.ProcessedFillResponse;
 import com.ledgerbull.position.web.dto.RecomputePositionsResponse;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -46,6 +48,11 @@ public class PositionController {
     @GetMapping
     public ResponseEntity<List<PositionSummaryResponse>> listPositions() {
         return ResponseEntity.ok(positionService.listPositions());
+    }
+
+    @GetMapping("/{symbol}/lots")
+    public ResponseEntity<List<LotResponse>> listLots(@PathVariable String symbol) {
+        return ResponseEntity.ok(positionService.listLots(symbol));
     }
 
     @GetMapping("/processed-fills")

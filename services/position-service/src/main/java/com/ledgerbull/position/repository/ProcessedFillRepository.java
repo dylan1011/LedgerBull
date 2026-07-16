@@ -11,4 +11,6 @@ public interface ProcessedFillRepository extends JpaRepository<ProcessedFillEnti
     List<ProcessedFillEntity> findBySymbol(String symbol);
 
     List<ProcessedFillEntity> findAllByOrderByIngestedAtDesc();
+
+    List<ProcessedFillEntity> findAllByOrderByIdAsc();
 }
