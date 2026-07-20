@@ -1,5 +1,6 @@
 #include "ledgerbull/matching_engine.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace ledgerbull {
@@ -46,15 +47,19 @@ const OrderBook* MatchingEngine::find_book(const std::string& symbol) const {
 
 std::optional<Quantity> MatchingEngine::resting_quantity(OrderId order_id) const {
     for (const auto& [_, book] : books_) {
-        for (const Order& o : book.get_bids()) {
-            if (o.order_id == order_id) {
-                return o.quantity;
-            }
+        const auto bids = book.get_bids();
+        auto bid_it = std::find_if(bids.begin(), bids.end(),
+                                   [&](const auto& o) { return o.order_id == order_id; });
+        if (bid_it != bids.end()) {
+            const auto& o = *bid_it;
+            return o.quantity;
         }
-        for (const Order& o : book.get_asks()) {
-            if (o.order_id == order_id) {
-                return o.quantity;
-            }
+        const auto asks = book.get_asks();
+        auto ask_it = std::find_if(asks.begin(), asks.end(),
+                                   [&](const auto& o) { return o.order_id == order_id; });
+        if (ask_it != asks.end()) {
+            const auto& o = *ask_it;
+            return o.quantity;
         }
     }
     return std::nullopt;
