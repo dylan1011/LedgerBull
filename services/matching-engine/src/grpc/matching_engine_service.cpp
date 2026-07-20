@@ -55,17 +55,7 @@ std::optional<OrderType> to_engine_type(ProtoOrderType type, std::string* err) {
 }
 
 std::optional<Quantity> find_resting_order(const ledgerbull::MatchingEngine& engine, OrderId id) {
-    for (const Order& o : engine.book().get_bids()) {
-        if (o.order_id == id) {
-            return o.quantity;
-        }
-    }
-    for (const Order& o : engine.book().get_asks()) {
-        if (o.order_id == id) {
-            return o.quantity;
-        }
-    }
-    return std::nullopt;
+    return engine.resting_quantity(id);
 }
 
 void aggregate_levels(const std::vector<Order>& orders,
@@ -177,13 +167,12 @@ MatchingEngineServiceImpl::MatchingEngineServiceImpl(ledgerbull::MatchingEngine*
         ::grpc::ServerContext* /*context*/,
         const ::ledgerbull::api::BookQueryRequest* request,
         ::ledgerbull::api::BookQueryResponse* response) {
-    if (!request->symbol().empty() && request->symbol() != engine_->book().symbol()) {
-        return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
-                              "symbol not served by this engine instance");
-    }
+    const std::string& symbol =
+            request->symbol().empty() ? engine_->book().symbol() : request->symbol();
+    const OrderBook& book = engine_->book_for(symbol);
 
-    aggregate_levels(engine_->book().get_bids(), response->mutable_bids());
-    aggregate_levels(engine_->book().get_asks(), response->mutable_asks());
+    aggregate_levels(book.get_bids(), response->mutable_bids());
+    aggregate_levels(book.get_asks(), response->mutable_asks());
     return ::grpc::Status::OK;
 }
 

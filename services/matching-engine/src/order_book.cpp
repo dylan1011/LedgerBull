@@ -118,7 +118,7 @@ std::vector<Fill> OrderBook::submit_order_with_sequence(const Order& incoming, S
 
             const Quantity match_qty = std::min(remaining, ask->quantity);
             fills.push_back(Fill{incoming.order_id, ask->order_id, ask->price, match_qty,
-                                 symbol_, next_trade_sequence_++});
+                                 incoming.symbol, next_trade_sequence_++});
 
             remaining -= match_qty;
             apply_maker_fill(ask->order_id, match_qty);
@@ -137,7 +137,7 @@ std::vector<Fill> OrderBook::submit_order_with_sequence(const Order& incoming, S
 
             const Quantity match_qty = std::min(remaining, bid->quantity);
             fills.push_back(Fill{incoming.order_id, bid->order_id, bid->price, match_qty,
-                                 symbol_, next_trade_sequence_++});
+                                 incoming.symbol, next_trade_sequence_++});
 
             remaining -= match_qty;
             apply_maker_fill(bid->order_id, match_qty);
@@ -177,7 +177,7 @@ std::vector<Fill> OrderBook::submit_order(const Order& incoming) {
 
             const Quantity match_qty = std::min(remaining, ask->quantity);
             fills.push_back(Fill{incoming.order_id, ask->order_id, ask->price, match_qty,
-                                 symbol_, next_trade_sequence_++});
+                                 incoming.symbol, next_trade_sequence_++});
 
             remaining -= match_qty;
             apply_maker_fill(ask->order_id, match_qty);
@@ -196,7 +196,7 @@ std::vector<Fill> OrderBook::submit_order(const Order& incoming) {
 
             const Quantity match_qty = std::min(remaining, bid->quantity);
             fills.push_back(Fill{incoming.order_id, bid->order_id, bid->price, match_qty,
-                                 symbol_, next_trade_sequence_++});
+                                 incoming.symbol, next_trade_sequence_++});
 
             remaining -= match_qty;
             apply_maker_fill(bid->order_id, match_qty);

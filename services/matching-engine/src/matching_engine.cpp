@@ -1,12 +1,63 @@
 #include "ledgerbull/matching_engine.hpp"
 
+#include <stdexcept>
+
 namespace ledgerbull {
 
-MatchingEngine::MatchingEngine(std::string symbol, std::string log_path, bool recover)
-    : book_(std::move(symbol)), log_(std::move(log_path)) {
+MatchingEngine::MatchingEngine(std::string default_symbol, std::string log_path, bool recover)
+    : default_symbol_(std::move(default_symbol)), log_(std::move(log_path)) {
+    ensure_book(default_symbol_);
     if (recover) {
         replay_from_log();
     }
+}
+
+OrderBook& MatchingEngine::ensure_book(const std::string& symbol) {
+    auto it = books_.find(symbol);
+    if (it == books_.end()) {
+        it = books_.emplace(symbol, OrderBook(symbol)).first;
+    }
+    return it->second;
+}
+
+OrderBook& MatchingEngine::book() {
+    return ensure_book(default_symbol_);
+}
+
+const OrderBook& MatchingEngine::book() const {
+    auto it = books_.find(default_symbol_);
+    if (it == books_.end()) {
+        throw std::logic_error("default symbol book missing: " + default_symbol_);
+    }
+    return it->second;
+}
+
+OrderBook& MatchingEngine::book_for(const std::string& symbol) {
+    return ensure_book(symbol);
+}
+
+const OrderBook* MatchingEngine::find_book(const std::string& symbol) const {
+    auto it = books_.find(symbol);
+    if (it == books_.end()) {
+        return nullptr;
+    }
+    return &it->second;
+}
+
+std::optional<Quantity> MatchingEngine::resting_quantity(OrderId order_id) const {
+    for (const auto& [_, book] : books_) {
+        for (const Order& o : book.get_bids()) {
+            if (o.order_id == order_id) {
+                return o.quantity;
+            }
+        }
+        for (const Order& o : book.get_asks()) {
+            if (o.order_id == order_id) {
+                return o.quantity;
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 void MatchingEngine::replay_from_log() {
@@ -20,21 +71,31 @@ void MatchingEngine::apply_event(const EngineEvent& event) {
     if (event.type == EventType::SUBMIT) {
         Order order(event.order_id, event.symbol, event.side, event.price, event.quantity,
                     event.order_type);
-        book_.submit_order_with_sequence(order, event.sequence);
+        ensure_book(event.symbol).submit_order_with_sequence(order, event.sequence);
         return;
     }
-    book_.cancel_order(event.order_id);
+    for (auto& [_, book] : books_) {
+        if (book.cancel_order(event.order_id)) {
+            return;
+        }
+    }
 }
 
 std::vector<Fill> MatchingEngine::submit_order(const Order& order) {
-    const Sequence seq = book_.peek_next_sequence();
+    OrderBook& book = ensure_book(order.symbol);
+    const Sequence seq = book.peek_next_sequence();
     log_.append_submit(order, seq);
-    return book_.submit_order_with_sequence(order, seq);
+    return book.submit_order_with_sequence(order, seq);
 }
 
 bool MatchingEngine::cancel_order(OrderId order_id) {
     log_.append_cancel(order_id);
-    return book_.cancel_order(order_id);
+    for (auto& [_, book] : books_) {
+        if (book.cancel_order(order_id)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace ledgerbull
