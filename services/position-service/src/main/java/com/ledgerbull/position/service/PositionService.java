@@ -166,7 +166,7 @@ public class PositionService {
 
     public List<PositionSummaryResponse> listPositions() {
         return positionRepository.findAllByOrderBySymbolAsc().stream()
-                .map(this::toSummary)
+                .map(this::buildPositionView)
                 .toList();
     }
 
@@ -174,7 +174,7 @@ public class PositionService {
         if (symbol == null || symbol.isBlank()) {
             return Optional.empty();
         }
-        return positionRepository.findBySymbol(symbol.trim()).map(this::toSummary);
+        return positionRepository.findBySymbol(symbol.trim()).map(this::buildPositionView);
     }
 
     /**
@@ -182,33 +182,17 @@ public class PositionService {
      * never {@code 0} for a missing price.
      */
     public Optional<Long> computeUnrealizedPnl(String symbol) {
-        Optional<Long> currentPrice = marketPriceClient.getLatestPriceTicks(symbol);
-        if (currentPrice.isEmpty()) {
-            return Optional.empty();
-        }
-        long priceTicks = currentPrice.get();
-        long unrealized = 0L;
-        List<LotEntity> openLots =
-                lotRepository.findBySymbolAndRemainingQuantityGreaterThanOrderBySequenceNoAsc(symbol, 0L);
-        for (LotEntity lot : openLots) {
-            long priceDiffTicks = priceTicks - lot.getPrice();
-            unrealized += Money.multiplyQtyPrice(lot.getRemainingQuantity(), priceDiffTicks);
-        }
-        return Optional.of(unrealized);
+        return marketPriceClient.getLatestPriceTicks(symbol).map(price -> sumUnrealized(symbol, price));
     }
 
-    private PositionSummaryResponse toSummary(PositionEntity position) {
+    /**
+     * Shared per-symbol response builder used by both list and single-symbol endpoints
+     * so the shapes never drift.
+     */
+    private PositionSummaryResponse buildPositionView(PositionEntity position) {
         String symbol = position.getSymbol();
         Optional<Long> currentPrice = marketPriceClient.getLatestPriceTicks(symbol);
-        Optional<Long> unrealized = currentPrice.flatMap(price -> {
-            long total = 0L;
-            List<LotEntity> openLots =
-                    lotRepository.findBySymbolAndRemainingQuantityGreaterThanOrderBySequenceNoAsc(symbol, 0L);
-            for (LotEntity lot : openLots) {
-                total += Money.multiplyQtyPrice(lot.getRemainingQuantity(), price - lot.getPrice());
-            }
-            return Optional.of(total);
-        });
+        Optional<Long> unrealized = currentPrice.map(price -> sumUnrealized(symbol, price));
 
         return new PositionSummaryResponse(
                 symbol,
@@ -219,6 +203,16 @@ public class PositionService {
                 unrealized.map(Money::toHuman).orElse(null),
                 currentPrice.orElse(null),
                 currentPrice.map(Money::toHuman).orElse(null));
+    }
+
+    private long sumUnrealized(String symbol, long currentPriceTicks) {
+        long unrealized = 0L;
+        List<LotEntity> openLots =
+                lotRepository.findBySymbolAndRemainingQuantityGreaterThanOrderBySequenceNoAsc(symbol, 0L);
+        for (LotEntity lot : openLots) {
+            unrealized += Money.multiplyQtyPrice(lot.getRemainingQuantity(), currentPriceTicks - lot.getPrice());
+        }
+        return unrealized;
     }
 
     public List<LotResponse> listLots(String symbol) {
