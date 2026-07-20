@@ -1,16 +1,14 @@
 # LedgerBull
 
-**LedgerBull** is a real-time trading & risk platform: it ingests live market data, validates and matches orders through a low-latency engine, tracks their full execution lifecycle, and (in later phases) monitors positions and risk — built as parallel microservices across C++, Java, and (later) Python.
+**LedgerBull** is a real-time trading & risk platform: it ingests live market data, validates and matches orders through a low-latency engine, tracks their full execution lifecycle, computes positions and PnL, and (in later phases) monitors risk — built as parallel microservices across C++, Java, and (later) Python.
 
 > **Scope note:** This is a demonstration platform built on free-tier infrastructure. It uses real market data and a genuine matching engine, but does **not** execute real trades (that requires broker-dealer licensing). It demonstrates production-grade engineering practices and the architecture of a real trading system.
-
-> **Environment:** macOS (Apple Silicon). Hosting targets: Oracle Cloud Always Free (backend), Vercel (frontend), Cloudflare (edge/backups).
 
 ---
 
 ## Status
 
-**Completed and verified through Phase 3** — the full execution lifecycle works end to end: live market data in → order validated → matched by the C++ engine → order & fills persisted → order state tracked (both sides of every trade) → queryable and cancellable.
+**Completed and verified through Phase 4** — the full trading core plus positions and PnL works end to end: live market data in → order validated → matched by the C++ engine → order & fills persisted → order state tracked (both sides of every trade) → queryable and cancellable → positions, realized PnL (FIFO), and unrealized PnL (live price) computed and queryable.
 
 | Phase | Scope | Status |
 |-------|-------|--------|
@@ -18,7 +16,7 @@
 | 1 | Spring Cloud foundation + live market data ingestion | ✅ Complete |
 | 2 | Matching engine (order book, matching, crash recovery, gRPC) + execution | ✅ Complete |
 | 3 | Execution lifecycle — order state machine, persistence, query & cancel | ✅ Complete |
-| 4 | Position & PnL tracking | ⬜ Planned |
+| 4 | Position & PnL tracking (net position, FIFO realized PnL, live unrealized PnL, query endpoints) | ✅ Complete |
 | 5 | Risk engine | ⬜ Planned |
 | 6 | AI/ML signals (Python sidecar) | ⬜ Planned |
 | 7 | Integration (full data → decision → execution → risk pipeline) | ⬜ Planned |
@@ -55,6 +53,15 @@
 - **Both-sides tracking** — when a taker order matches resting maker orders, both the taker and the makers have their status and quantities updated, with maker fills accumulating correctly across multiple matches.
 - **Query & cancel** — `GET /orders/{id}` (with fills), `GET /orders?symbol=&status=` (filtered, paginated), and a guarded cancel endpoint (only NEW/PARTIALLY_FILLED → CANCELLED). Prices are returned human-readable; stored as integer ticks.
 
+**Phase 4 — Positions & PnL.**
+- **Dedicated position service** with its own PostgreSQL database, separate from execution — the parts stay decoupled (execution records *what happened*; positions derive *what you now hold and what it's worth*).
+- **Idempotent fill ingestion** — pulls fills from the execution service and records each exactly once (a `processed_fills` guard prevents double-counting on retries), so positions never drift.
+- **Signed net positions** — net quantity per symbol (positive = long, negative = short), attributed to the taker side of each trade.
+- **Realized PnL via FIFO lot accounting** — each buy opens a lot (quantity at a cost price); each sell consumes the oldest lots first, and realized PnL = (sell price − lot price) × quantity. Recompute replays all fills from scratch and is idempotent.
+- **Unrealized PnL from the live price** — the "paper" PnL on open lots, computed at read time as (current price − lot price) × remaining quantity. The current price is read from the Redis latest-price cache. It is never stored (it changes every tick), and it fails cleanly to `null` (never a misleading 0) if the price is unavailable.
+- **Money as integer ticks** — all money is stored and computed as scaled integers (no floating-point drift), converted to human-readable decimals only at the boundary.
+- **Query endpoints** — `GET /api/positions` (all symbols) and `GET /api/positions/{symbol}` return net quantity, realized PnL, and unrealized PnL together (with human-readable forms), both routed through one shared builder so the list and single-symbol responses never diverge.
+
 ---
 
 ## Tech stack
@@ -65,9 +72,9 @@
 | Matching engine core | C++17 (STL, gRPC/protobuf) | ✅ In use |
 | Service mesh | Spring Cloud (Eureka, Gateway, Config Server) | ✅ In use |
 | Inter-service (engine) | gRPC + Protocol Buffers | ✅ In use |
-| Relational DB | PostgreSQL 16 (orders, fills) | ✅ In use |
+| Relational DB | PostgreSQL 16 (orders, fills; separate DB for positions, lots) | ✅ In use |
 | Time-series DB | TimescaleDB (market data) | ✅ In use |
-| Cache | Redis | ✅ In use |
+| Cache | Redis (latest price; feeds unrealized PnL) | ✅ In use |
 | Migrations | Flyway | ✅ In use |
 | Containerization | Docker + Docker Compose | ✅ In use |
 | CI/CD | GitHub Actions (build, security scan, lint) | ✅ In use |
@@ -121,7 +128,7 @@ The in-memory order book is a fast, rebuildable view; the append-only event log 
 │   ├── matching-engine/           # C++ order book + matching   [built]
 │   ├── execution-service/         # validation, persistence,    [built]
 │   │                              #   state machine, query/cancel
-│   ├── position-pnl-service/      # positions & PnL            [planned]
+│   ├── position-service/         # positions, FIFO PnL, PnL    [built]
 │   ├── risk-service/              # risk engine + Python        [planned]
 │   ├── strategy-signal-service/   # signals + Python           [planned]
 │   └── alert-service/             # alerts                     [planned]
@@ -161,7 +168,12 @@ cmake --build build
 cd services/execution-service && mvn spring-boot:run      # 8082
 ```
 
-**5. Try it:**
+**5. Run the position service:**
+```bash
+cd services/position-service && mvn spring-boot:run       # 8083
+```
+
+**6. Try it:**
 ```bash
 # Resting sell
 curl -X POST http://localhost:8082/api/execution/orders -H "Content-Type: application/json" \
@@ -171,6 +183,14 @@ curl -X POST http://localhost:8082/api/execution/orders -H "Content-Type: applic
   -d '{"order_id":"2","symbol":"BTC-USD","side":"BUY","type":"LIMIT","price":105,"quantity":5}'
 # Query the order and its fills
 curl http://localhost:8082/api/execution/orders/2
+
+# Pull fills into the position service, recompute, then view positions & PnL
+curl -X POST http://localhost:8083/api/positions/ingest-fills
+curl -X POST http://localhost:8083/api/positions/recompute
+# net quantity, realized PnL (FIFO), and unrealized PnL (live price) for one symbol
+curl http://localhost:8083/api/positions/BTC-USD
+# or all symbols at once
+curl http://localhost:8083/api/positions
 ```
 
 ---
@@ -180,4 +200,3 @@ curl http://localhost:8082/api/execution/orders/2
 - **Real data, simulated execution.** Crypto uses live real-time data; equities (later phases) will use free delayed data as a simulation. No real trades are executed — that requires broker-dealer licensing and is out of scope.
 - **Deliberately deferred to later phases:** TLS/mTLS + auth + rate limiting (Phase 8), circuit breakers + failover (Phase 9), observability (Phase 10), backups (Phase 12).
 - **Known constraints (free single-VM deployment):** the matching engine is currently single-threaded; there is no true high-availability failover (that needs paid multi-node infrastructure); exchange-grade microsecond latency is not a goal on shared free infrastructure. These are documented deliberate trade-offs, not oversights.
-
