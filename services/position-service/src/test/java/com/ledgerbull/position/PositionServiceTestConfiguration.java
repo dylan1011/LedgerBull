@@ -1,6 +1,7 @@
 package com.ledgerbull.position;
 
 import com.ledgerbull.position.client.ExecutionClient;
+import com.ledgerbull.position.client.MarketPriceClient;
 import com.ledgerbull.position.repository.LotRepository;
 import com.ledgerbull.position.repository.PositionRepository;
 import com.ledgerbull.position.repository.ProcessedFillRepository;
@@ -34,5 +35,11 @@ public class PositionServiceTestConfiguration {
     @Primary
     ExecutionClient executionClient() {
         return Mockito.mock(ExecutionClient.class);
+    }
+
+    @Bean
+    @Primary
+    MarketPriceClient marketPriceClient() {
+        return Mockito.mock(MarketPriceClient.class);
     }
 }

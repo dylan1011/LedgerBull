@@ -50,6 +50,14 @@ public class PositionController {
         return ResponseEntity.ok(positionService.listPositions());
     }
 
+    @GetMapping("/{symbol}")
+    public ResponseEntity<PositionSummaryResponse> getPosition(@PathVariable String symbol) {
+        return positionService
+                .getPosition(symbol)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/{symbol}/lots")
     public ResponseEntity<List<LotResponse>> listLots(@PathVariable String symbol) {
         return ResponseEntity.ok(positionService.listLots(symbol));

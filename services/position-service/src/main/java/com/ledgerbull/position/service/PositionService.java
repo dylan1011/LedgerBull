@@ -1,5 +1,6 @@
 package com.ledgerbull.position.service;
 
+import com.ledgerbull.position.client.MarketPriceClient;
 import com.ledgerbull.position.entity.LotEntity;
 import com.ledgerbull.position.entity.PositionEntity;
 import com.ledgerbull.position.entity.ProcessedFillEntity;
@@ -16,6 +17,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import org.slf4j.Logger;
@@ -33,14 +35,17 @@ public class PositionService {
     private final ProcessedFillRepository processedFillRepository;
     private final PositionRepository positionRepository;
     private final LotRepository lotRepository;
+    private final MarketPriceClient marketPriceClient;
 
     public PositionService(
             ProcessedFillRepository processedFillRepository,
             PositionRepository positionRepository,
-            LotRepository lotRepository) {
+            LotRepository lotRepository,
+            MarketPriceClient marketPriceClient) {
         this.processedFillRepository = processedFillRepository;
         this.positionRepository = positionRepository;
         this.lotRepository = lotRepository;
+        this.marketPriceClient = marketPriceClient;
     }
 
     /**
@@ -161,12 +166,59 @@ public class PositionService {
 
     public List<PositionSummaryResponse> listPositions() {
         return positionRepository.findAllByOrderBySymbolAsc().stream()
-                .map(position -> new PositionSummaryResponse(
-                        position.getSymbol(),
-                        position.getNetQuantity(),
-                        position.getRealizedPnl(),
-                        Money.toHuman(position.getRealizedPnl())))
+                .map(this::toSummary)
                 .toList();
+    }
+
+    public Optional<PositionSummaryResponse> getPosition(String symbol) {
+        if (symbol == null || symbol.isBlank()) {
+            return Optional.empty();
+        }
+        return positionRepository.findBySymbol(symbol.trim()).map(this::toSummary);
+    }
+
+    /**
+     * Read-time unrealized PnL for a symbol. Empty when the latest price is unavailable —
+     * never {@code 0} for a missing price.
+     */
+    public Optional<Long> computeUnrealizedPnl(String symbol) {
+        Optional<Long> currentPrice = marketPriceClient.getLatestPriceTicks(symbol);
+        if (currentPrice.isEmpty()) {
+            return Optional.empty();
+        }
+        long priceTicks = currentPrice.get();
+        long unrealized = 0L;
+        List<LotEntity> openLots =
+                lotRepository.findBySymbolAndRemainingQuantityGreaterThanOrderBySequenceNoAsc(symbol, 0L);
+        for (LotEntity lot : openLots) {
+            long priceDiffTicks = priceTicks - lot.getPrice();
+            unrealized += Money.multiplyQtyPrice(lot.getRemainingQuantity(), priceDiffTicks);
+        }
+        return Optional.of(unrealized);
+    }
+
+    private PositionSummaryResponse toSummary(PositionEntity position) {
+        String symbol = position.getSymbol();
+        Optional<Long> currentPrice = marketPriceClient.getLatestPriceTicks(symbol);
+        Optional<Long> unrealized = currentPrice.flatMap(price -> {
+            long total = 0L;
+            List<LotEntity> openLots =
+                    lotRepository.findBySymbolAndRemainingQuantityGreaterThanOrderBySequenceNoAsc(symbol, 0L);
+            for (LotEntity lot : openLots) {
+                total += Money.multiplyQtyPrice(lot.getRemainingQuantity(), price - lot.getPrice());
+            }
+            return Optional.of(total);
+        });
+
+        return new PositionSummaryResponse(
+                symbol,
+                position.getNetQuantity(),
+                position.getRealizedPnl(),
+                Money.toHuman(position.getRealizedPnl()),
+                unrealized.orElse(null),
+                unrealized.map(Money::toHuman).orElse(null),
+                currentPrice.orElse(null),
+                currentPrice.map(Money::toHuman).orElse(null));
     }
 
     public List<LotResponse> listLots(String symbol) {
