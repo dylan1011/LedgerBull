@@ -1,6 +1,7 @@
 #include "ledgerbull/order_book.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <sstream>
 #include <utility>
 
@@ -235,9 +236,7 @@ std::vector<Order> OrderBook::snapshot(const Levels& levels) {
     std::vector<Order> out;
     for (const auto& [price, level] : levels) {
         (void)price;
-        for (const auto& order : level) {
-            out.push_back(order);
-        }
+        std::copy(level.begin(), level.end(), std::back_inserter(out));
     }
     return out;
 }
