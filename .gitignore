@@ -55,3 +55,4 @@ data/
 # Local verification scripts (not for repo)
 scripts/
 verify-*.sh
+.security-guard.sha256
