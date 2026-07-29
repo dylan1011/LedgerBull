@@ -15,6 +15,10 @@
 	<description>Position and PnL service for LedgerBull</description>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Security overrides (OWASP CVSS>=7): bump past Boot 3.5.16 managed versions -->
+		<tomcat.version>10.1.57</tomcat.version>
+		<httpcore5.version>5.4.3</httpcore5.version>
+		<log4j2.version>2.26.1</log4j2.version>
 		<spring-cloud.version>2025.0.3</spring-cloud.version>
 	</properties>
 	<dependencies>
@@ -45,6 +49,7 @@
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
+			<version>42.7.12</version>
 			<scope>runtime</scope>
 		</dependency>
 		<dependency>
@@ -67,6 +72,14 @@
 				<groupId>org.springframework.cloud</groupId>
 				<artifactId>spring-cloud-dependencies</artifactId>
 				<version>${spring-cloud.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<!-- CVE-2026-59901: force Netty past 4.1.135 until Spring Boot parent catches up -->
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-bom</artifactId>
+				<version>4.1.136.Final</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>

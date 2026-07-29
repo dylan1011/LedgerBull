@@ -28,6 +28,10 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Security overrides (OWASP CVSS>=7): bump past Boot 3.5.16 managed versions -->
+		<tomcat.version>10.1.57</tomcat.version>
+		<httpcore5.version>5.4.3</httpcore5.version>
+		<log4j2.version>2.26.1</log4j2.version>
 		<spring-cloud.version>2025.0.3</spring-cloud.version>
 	</properties>
 	<dependencies>
