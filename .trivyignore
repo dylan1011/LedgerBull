@@ -14,3 +14,11 @@ CVE-2026-39821
 CVE-2026-42502
 CVE-2026-27145
 CVE-2026-42504
+
+# CVE-2026-39822: Go stdlib os.Root symlink-following / directory-traversal in the `pebble`
+# binary shipped inside the upstream eclipse-temurin:21-jre base image (Go 1.26.4). NOT in
+# LedgerBull code or our Java dependencies; the Dockerfile does not install pebble. Fixed
+# upstream in Go 1.26.5 — cannot be remediated by us directly, only by a rebuilt Temurin
+# base once Adoptium ships one. Action: re-scan and remove this entry when the base is bumped.
+# Reviewed: 2026-07-29
+CVE-2026-39822
