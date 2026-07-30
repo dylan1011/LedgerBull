@@ -17,15 +17,9 @@ jobs:
   dependency-check:
     name: OWASP Dependency-Check (Java deps)
     runs-on: ubuntu-latest
-    # OWASP Dependency-Check must download the NVD vulnerability feed. NVD now heavily
-    # rate-limits requests without an API key, which makes this step slow/flaky on
-    # shared CI runners. It therefore runs as REPORT-ONLY here so it never blocks the
-    # pipeline on infrastructure throttling. Reliable HIGH/CRITICAL *gating* for Java
-    # dependencies is provided by the Trivy job below, which does not depend on NVD.
-    #
-    # To turn this into a hard gate: add a free NVD_API_KEY repo secret
-    # (https://nvd.nist.gov/developers/request-an-api-key) and delete the line below.
-    continue-on-error: true
+    # NVD rate-limits anonymous downloads; this job uses the NVD_API_KEY repo secret
+    # (https://nvd.nist.gov/developers/request-an-api-key) and caches ~/.dc-data so
+    # updates stay fast. failBuildOnCVSS=7 is the HIGH/CRITICAL gate — do not weaken it.
     steps:
       - uses: actions/checkout@v4
 
@@ -41,22 +35,26 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.dc-data
-          key: owasp-dc-data-${{ runner.os }}
+          key: nvd-data-${{ runner.os }}-v1
+          restore-keys: |
+            nvd-data-${{ runner.os }}-
 
       - name: Run OWASP Dependency-Check on all Java services
         env:
-          # Optional but strongly recommended: set an NVD_API_KEY repo secret to avoid
-          # NVD rate limiting. Works without it, just slower on the first run.
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          set -e
+          set -euo pipefail
+          if [ -z "${NVD_API_KEY:-}" ]; then
+            echo "::error::NVD_API_KEY secret is empty. Add the free NVD API key as a repo secret named NVD_API_KEY."
+            exit 1
+          fi
           for svc in eureka-server config-server api-gateway market-data-service; do
             echo "::group::OWASP Dependency-Check :: $svc"
             mvn -B -ntp -f "services/$svc/pom.xml" org.owasp:dependency-check-maven:check \
               -DfailBuildOnCVSS=7 \
               -DassemblyAnalyzerEnabled=false \
               -DnvdApiKey="${NVD_API_KEY}" \
-              -DnvdApiDelay=6000 \
+              -DnvdApiDelay=2000 \
               -DdataDirectory="$HOME/.dc-data" \
               -Dformat=HTML
             echo "::endgroup::"
