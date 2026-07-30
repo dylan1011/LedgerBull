@@ -30,3 +30,13 @@ management:
 matching-engine:
   host: ${MATCHING_ENGINE_HOST:localhost}
   port: ${MATCHING_ENGINE_PORT:50051}
+
+# Phase 5 risk limits (overridable). Checks enforced in 5B–5G; fail-closed is intent for later.
+ledgerbull:
+  risk:
+    max-order-quantity: 1000
+    max-net-position-per-symbol: 10000
+    max-notional-usd: 1000000
+    fat-finger-band-percent: 10
+    max-realized-loss-usd: 50000
+    fail-closed: true
