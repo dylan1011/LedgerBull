@@ -66,9 +66,9 @@ Every push runs two workflows:
   - **SpotBugs** — static analysis for the Java code.
   - **ESLint** — lint for the frontend.
 - **Security Scan**
-  - **Trivy** — scans the Docker image and files for known vulnerabilities (CVEs).
-  - **OWASP Dependency-Check** — checks Java dependencies for known CVEs.
+  - **Trivy** — dependency and container vulnerability scanning (filesystem + Docker image CVEs).
   - **TruffleHog** — scans for leaked secrets (API keys, passwords).
+  - *(OWASP Dependency-Check was removed because its NVD feed was too slow/unreliable in CI; Trivy covers dependency CVEs.)*
 
 **Planned for later phases** (listed to show the plan, not yet built): Resilience4j (Phase 9); Prometheus, Grafana, Zipkin, Loki (Phase 10); Kubernetes + Helm (scaling). A Next.js + TypeScript + Tailwind frontend is scaffolded.
 
@@ -96,7 +96,7 @@ Later, in Phase 8 (security hardening), I plan to move to a smaller base image (
 - Spring Cloud stack: Eureka (service discovery), Config Server, API Gateway.
 - The Market Data Service takes in **live crypto prices** over a secure `wss://` websocket and stores them in **TimescaleDB**, with **Redis** as a cache.
 - Made robust: the websocket reconnects with backoff; if Redis is down the service still works (it reads from TimescaleDB); inserts are batched; old data is cleaned up.
-- Security from day one: secure feed, CI vulnerability scanning (Trivy, OWASP, secret scan), no secrets in the repo.
+- Security from day one: secure feed, CI vulnerability scanning (Trivy + TruffleHog), no secrets in the repo.
 
 **Phase 2 — Matching engine + execution.**
 - **Matching engine** (C++17, `services/matching-engine/`), in four layers:

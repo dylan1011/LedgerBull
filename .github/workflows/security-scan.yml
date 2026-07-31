@@ -3,7 +3,7 @@ name: Security Scan
 # Runs dependency, container/filesystem, and secret scanning on every push and PR.
 # Only HIGH/CRITICAL findings fail the build, so low-severity noise stays out of the way.
 # Third-party actions are pinned to commit SHAs (supply-chain safety); GitHub-owned
-# actions are tag-pinned.
+# actions are tag-pinned. Dependency CVE coverage is Trivy's filesystem scan (vuln).
 
 on:
   push:
@@ -14,60 +14,6 @@ permissions:
   contents: read
 
 jobs:
-  dependency-check:
-    name: OWASP Dependency-Check (Java deps)
-    runs-on: ubuntu-latest
-    # NVD rate-limits anonymous downloads; this job uses the NVD_API_KEY repo secret
-    # (https://nvd.nist.gov/developers/request-an-api-key) and caches ~/.dc-data so
-    # updates stay fast. failBuildOnCVSS=7 is the HIGH/CRITICAL gate — do not weaken it.
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-
-      # Cache the NVD vulnerability database between runs so it isn't rebuilt every time.
-      - name: Cache OWASP NVD data
-        uses: actions/cache@v4
-        with:
-          path: ~/.dc-data
-          key: nvd-data-${{ runner.os }}-v1
-          restore-keys: |
-            nvd-data-${{ runner.os }}-
-
-      - name: Run OWASP Dependency-Check on all Java services
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${NVD_API_KEY:-}" ]; then
-            echo "::error::NVD_API_KEY secret is empty. Add the free NVD API key as a repo secret named NVD_API_KEY."
-            exit 1
-          fi
-          for svc in eureka-server config-server api-gateway market-data-service; do
-            echo "::group::OWASP Dependency-Check :: $svc"
-            mvn -B -ntp -f "services/$svc/pom.xml" org.owasp:dependency-check-maven:check \
-              -DfailBuildOnCVSS=7 \
-              -DassemblyAnalyzerEnabled=false \
-              -DnvdApiKey="${NVD_API_KEY}" \
-              -DnvdApiDelay=2000 \
-              -DdataDirectory="$HOME/.dc-data" \
-              -Dformat=HTML
-            echo "::endgroup::"
-          done
-
-      - name: Upload Dependency-Check reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dependency-check-reports
-          path: services/**/target/dependency-check-report.html
-          if-no-files-found: ignore
-
   trivy:
     name: Trivy (image + filesystem)
     runs-on: ubuntu-latest
