@@ -6,6 +6,8 @@ import com.ledgerbull.execution.entity.FillEntity;
 import com.ledgerbull.execution.entity.OrderEntity;
 import com.ledgerbull.execution.repository.FillRepository;
 import com.ledgerbull.execution.repository.OrderRepository;
+import com.ledgerbull.execution.risk.RiskDecision;
+import com.ledgerbull.execution.risk.RiskEngine;
 import com.ledgerbull.execution.web.error.EngineRejectedException;
 import com.ledgerbull.execution.web.error.EngineUnavailableException;
 import com.ledgerbull.execution.web.error.OrderCancelConflictException;
@@ -34,23 +36,43 @@ public class ExecutionService {
     private final OrderRepository orderRepository;
     private final FillRepository fillRepository;
     private final OrderMatchPersistenceService matchPersistenceService;
+    private final RiskEngine riskEngine;
 
     public ExecutionService(
             OrderValidationService validationService,
             MatchingEngineClient engineClient,
             OrderRepository orderRepository,
             FillRepository fillRepository,
-            OrderMatchPersistenceService matchPersistenceService) {
+            OrderMatchPersistenceService matchPersistenceService,
+            RiskEngine riskEngine) {
         this.validationService = validationService;
         this.engineClient = engineClient;
         this.orderRepository = orderRepository;
         this.fillRepository = fillRepository;
         this.matchPersistenceService = matchPersistenceService;
+        this.riskEngine = riskEngine;
     }
 
     public SubmitOrderResponse submitOrder(OrderRequest request) {
         OrderValidationService.ValidatedOrder validated = validationService.validate(request);
         OrderEntity savedOrder = saveNewOrder(validated);
+
+        Double humanPrice =
+                "LIMIT".equals(validated.type()) ? PriceConverter.fromTicks(validated.priceTicks()) : null;
+        RiskDecision decision = riskEngine.evaluateNewOrder(
+                validated.symbol(),
+                validated.side(),
+                validated.type(),
+                humanPrice,
+                validated.quantity());
+        if (!decision.allowed()) {
+            String reason = decision.reason() == null || decision.reason().isBlank()
+                    ? "rejected by risk"
+                    : decision.reason();
+            markOrderRejected(savedOrder, reason);
+            throw new EngineRejectedException(reason);
+        }
+
         try {
             EngineSubmitResult result = engineClient.submitOrder(
                     validated.orderId(),

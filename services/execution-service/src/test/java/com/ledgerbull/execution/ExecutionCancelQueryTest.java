@@ -13,6 +13,7 @@ import com.ledgerbull.execution.client.MatchingEngineClient;
 import com.ledgerbull.execution.entity.OrderEntity;
 import com.ledgerbull.execution.repository.FillRepository;
 import com.ledgerbull.execution.repository.OrderRepository;
+import com.ledgerbull.execution.risk.RiskEngine;
 import com.ledgerbull.execution.service.ExecutionService;
 import com.ledgerbull.execution.service.OrderMatchPersistenceService;
 import com.ledgerbull.execution.service.OrderValidationService;
@@ -44,6 +45,9 @@ class ExecutionCancelQueryTest {
     @Mock
     private OrderMatchPersistenceService matchPersistenceService;
 
+    @Mock
+    private RiskEngine riskEngine;
+
     private ExecutionService executionService;
 
     @BeforeEach
@@ -53,7 +57,8 @@ class ExecutionCancelQueryTest {
                 engineClient,
                 orderRepository,
                 fillRepository,
-                matchPersistenceService);
+                matchPersistenceService,
+                riskEngine);
     }
 
     @Test

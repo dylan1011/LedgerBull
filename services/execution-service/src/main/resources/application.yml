@@ -18,6 +18,10 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 eureka:
   client:
     service-url:
@@ -27,11 +31,14 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  health:
+    redis:
+      enabled: false
 matching-engine:
   host: ${MATCHING_ENGINE_HOST:localhost}
   port: ${MATCHING_ENGINE_PORT:50051}
 
-# Phase 5 risk limits (overridable). Checks enforced in 5B–5G; fail-closed is intent for later.
+# Phase 5 risk limits (pre-trade checks enforced in RiskEngine).
 ledgerbull:
   risk:
     max-order-quantity: 1000
@@ -40,3 +47,4 @@ ledgerbull:
     fat-finger-band-percent: 10
     max-realized-loss-usd: 50000
     fail-closed: true
+    position-service-base-url: ${POSITION_SERVICE_BASE_URL:http://localhost:8083}
