@@ -8,6 +8,7 @@ import com.ledgerbull.position.money.Money;
 import com.ledgerbull.position.repository.LotRepository;
 import com.ledgerbull.position.repository.PositionRepository;
 import com.ledgerbull.position.repository.ProcessedFillRepository;
+import com.ledgerbull.position.risk.PostTradeRiskMonitor;
 import com.ledgerbull.position.web.dto.LotResponse;
 import com.ledgerbull.position.web.dto.PositionSummaryResponse;
 import com.ledgerbull.position.web.dto.RecomputePositionsResponse;
@@ -36,16 +37,19 @@ public class PositionService {
     private final PositionRepository positionRepository;
     private final LotRepository lotRepository;
     private final MarketPriceClient marketPriceClient;
+    private final PostTradeRiskMonitor postTradeRiskMonitor;
 
     public PositionService(
             ProcessedFillRepository processedFillRepository,
             PositionRepository positionRepository,
             LotRepository lotRepository,
-            MarketPriceClient marketPriceClient) {
+            MarketPriceClient marketPriceClient,
+            PostTradeRiskMonitor postTradeRiskMonitor) {
         this.processedFillRepository = processedFillRepository;
         this.positionRepository = positionRepository;
         this.lotRepository = lotRepository;
         this.marketPriceClient = marketPriceClient;
+        this.postTradeRiskMonitor = postTradeRiskMonitor;
     }
 
     /**
@@ -125,6 +129,9 @@ public class PositionService {
             position.setNetQuantity(netQuantity);
             position.setRealizedPnl(realizedPnl);
             positionRepository.save(position);
+
+            // Phase 5E: detect+record breaches on settled state (never throws; does not alter PnL).
+            postTradeRiskMonitor.evaluateAfterFill(symbol, netQuantity, realizedPnl);
 
             updated.add(new SymbolPositionResponse(symbol, netQuantity, realizedPnl, Money.toHuman(realizedPnl)));
         }

@@ -16,5 +16,7 @@ public record RiskProperties(
         int fatFingerBandPercent,
         long maxRealizedLossUsd,
         boolean failClosed,
-        String positionServiceBaseUrl) {
+        String positionServiceBaseUrl,
+        long positionServiceConnectTimeoutMs,
+        long positionServiceReadTimeoutMs) {
 }

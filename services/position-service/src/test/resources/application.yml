@@ -8,3 +8,12 @@ spring:
       - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+ledgerbull:
+  risk:
+    max-net-position-per-symbol: 10000
+    max-realized-loss-usd: 50000
+
+execution:
+  host: localhost
+  port: 8082

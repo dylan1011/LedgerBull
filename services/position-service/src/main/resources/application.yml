@@ -34,3 +34,9 @@ management:
     redis:
       enabled: false
 
+# Phase 5E post-trade limits (same names/semantics as execution-service ledgerbull.risk).
+ledgerbull:
+  risk:
+    max-net-position-per-symbol: 10000
+    max-realized-loss-usd: 50000
+

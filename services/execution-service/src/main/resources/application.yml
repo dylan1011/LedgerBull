@@ -43,8 +43,13 @@ ledgerbull:
   risk:
     max-order-quantity: 1000
     max-net-position-per-symbol: 10000
-    max-notional-usd: 1000000
+    # $100M so size (1000) and position (10k) can fire first at BTC ~$63k
+    # (1000 units ≈ $63M); notional still caps truly enormous orders.
+    max-notional-usd: 100000000
     fat-finger-band-percent: 10
     max-realized-loss-usd: 50000
     fail-closed: true
     position-service-base-url: ${POSITION_SERVICE_BASE_URL:http://localhost:8083}
+    # PositionClient: generous enough for cold start/GC; still bounds the order path.
+    position-service-connect-timeout-ms: 500
+    position-service-read-timeout-ms: 2000

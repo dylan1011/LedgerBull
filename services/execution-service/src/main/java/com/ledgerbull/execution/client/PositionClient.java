@@ -16,9 +16,10 @@ import org.springframework.web.client.RestClientResponseException;
 /**
  * Reads current net position from position-service ({@code GET /api/positions/{symbol}}).
  *
- * <p>Reliability (Phase 5B): short connect/read timeout, one retry on failure, ~1s in-memory
- * cache per symbol. Never returns 0 on fetch failure — use {@link NetPositionResult.Unavailable}.
- * HTTP 404 (no row yet) is treated as net quantity 0.
+ * <p>Reliability: config-driven connect/read timeouts, up to two retries with a short backoff,
+ * ~1s in-memory cache per symbol. Never returns 0 on fetch failure — use
+ * {@link NetPositionResult.Unavailable}. HTTP 404 (no row yet) is treated as net quantity 0.
+ * Final failure after retries stays fail-closed at the risk layer.
  *
  * <p>A circuit breaker (Resilience4j) is planned for Phase 9 — not added here.
  */
@@ -27,26 +28,37 @@ public class PositionClient {
 
     private static final Logger log = LoggerFactory.getLogger(PositionClient.class);
 
-    private static final Duration CONNECT_TIMEOUT = Duration.ofMillis(400);
-    private static final Duration READ_TIMEOUT = Duration.ofMillis(400);
     private static final long CACHE_TTL_MS = 1_000L;
+    /** Tiny pause before a retry so a momentary hiccup can clear. */
+    private static final long RETRY_BACKOFF_MS = 75L;
+    /** Initial attempt + up to this many retries. */
+    private static final int MAX_RETRIES = 2;
 
     private final RestClient restClient;
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
     public PositionClient(RiskProperties riskProperties) {
+        Duration connectTimeout = Duration.ofMillis(Math.max(1L, riskProperties.positionServiceConnectTimeoutMs()));
+        Duration readTimeout = Duration.ofMillis(Math.max(1L, riskProperties.positionServiceReadTimeoutMs()));
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(CONNECT_TIMEOUT);
-        requestFactory.setReadTimeout(READ_TIMEOUT);
+        requestFactory.setConnectTimeout(connectTimeout);
+        requestFactory.setReadTimeout(readTimeout);
         this.restClient = RestClient.builder()
                 .baseUrl(riskProperties.positionServiceBaseUrl())
                 .requestFactory(requestFactory)
                 .build();
+        log.info(
+                "PositionClient timeouts: connect={}ms read={}ms (retries={}, backoff={}ms, cache={}ms)",
+                connectTimeout.toMillis(),
+                readTimeout.toMillis(),
+                MAX_RETRIES,
+                RETRY_BACKOFF_MS,
+                CACHE_TTL_MS);
     }
 
     /**
      * Current net quantity for {@code symbol}, or unavailable if position-service cannot be
-     * reached after one retry.
+     * reached after retries.
      */
     public NetPositionResult getNetPosition(String symbol) {
         if (symbol == null || symbol.isBlank()) {
@@ -60,19 +72,37 @@ public class PositionClient {
             return NetPositionResult.available(cached.netQuantity());
         }
 
-        NetPositionResult first = fetchOnce(key);
-        if (first instanceof NetPositionResult.Available available) {
+        NetPositionResult last = fetchOnce(key);
+        if (last instanceof NetPositionResult.Available available) {
             cache.put(key, new CacheEntry(available.netQuantity(), now));
-            return first;
+            return last;
         }
 
-        log.warn("Position fetch failed for {} ({}); retrying once", key, ((NetPositionResult.Unavailable) first).detail());
-        NetPositionResult second = fetchOnce(key);
-        if (second instanceof NetPositionResult.Available available) {
-            cache.put(key, new CacheEntry(available.netQuantity(), System.currentTimeMillis()));
-            return second;
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            log.warn(
+                    "Position fetch failed for {} ({}); retry {}/{} after {}ms",
+                    key,
+                    ((NetPositionResult.Unavailable) last).detail(),
+                    attempt,
+                    MAX_RETRIES,
+                    RETRY_BACKOFF_MS);
+            sleepBackoff();
+            last = fetchOnce(key);
+            if (last instanceof NetPositionResult.Available available) {
+                cache.put(key, new CacheEntry(available.netQuantity(), System.currentTimeMillis()));
+                return last;
+            }
         }
-        return second;
+        // Fail-closed signal for RiskEngine — do not invent a zero position.
+        return last;
+    }
+
+    private void sleepBackoff() {
+        try {
+            Thread.sleep(RETRY_BACKOFF_MS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private NetPositionResult fetchOnce(String symbol) {
