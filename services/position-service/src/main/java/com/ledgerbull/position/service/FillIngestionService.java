@@ -14,10 +14,15 @@ public class FillIngestionService {
 
     private final ExecutionClient executionClient;
     private final ProcessedFillWriter processedFillWriter;
+    private final PositionService positionService;
 
-    public FillIngestionService(ExecutionClient executionClient, ProcessedFillWriter processedFillWriter) {
+    public FillIngestionService(
+            ExecutionClient executionClient,
+            ProcessedFillWriter processedFillWriter,
+            PositionService positionService) {
         this.executionClient = executionClient;
         this.processedFillWriter = processedFillWriter;
+        this.positionService = positionService;
     }
 
     public IngestFillsResponse ingestFills() {
@@ -26,6 +31,17 @@ public class FillIngestionService {
             log.warn("Fill ingestion skipped: execution service unreachable");
             return new IngestFillsResponse(0, 0, 0, false);
         }
-        return processedFillWriter.persistNewFills(fetchResult.fills());
+        IngestFillsResponse response = processedFillWriter.persistNewFills(fetchResult.fills());
+        // Chain to recompute so positions + 5E post-trade monitor stay current after new fills.
+        // No circular dependency: PositionService does not depend on FillIngestionService.
+        if (response.ingested() > 0) {
+            log.info(
+                    "Ingested {} new fill(s) (seen={}, duplicates={}); recomputing positions",
+                    response.ingested(),
+                    response.seen(),
+                    response.duplicates());
+            positionService.recomputePositions();
+        }
+        return response;
     }
 }

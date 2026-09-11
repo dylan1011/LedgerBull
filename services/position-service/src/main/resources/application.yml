@@ -39,4 +39,7 @@ ledgerbull:
   risk:
     max-net-position-per-symbol: 10000
     max-realized-loss-usd: 50000
+  position:
+    # Auto-poll execution for new fills (ingest chains to recompute when ingested > 0).
+    ingest-poll-ms: 5000
 
