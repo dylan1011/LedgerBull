@@ -22,3 +22,14 @@ CVE-2026-42504
 # base once Adoptium ships one. Action: re-scan and remove this entry when the base is bumped.
 # Reviewed: 2026-07-29
 CVE-2026-39822
+
+# New pebble base-image CVEs (Go stdlib / golang.org/x/net) in the `pebble` binary shipped inside
+# eclipse-temurin:21-jre. NOT in LedgerBull code or our Java deps; fixable only by an upstream
+# Temurin base bump. Re-scan and remove when the base image is bumped. Reviewed: 2026-09-11.
+CVE-2026-33818
+CVE-2026-46600
+CVE-2026-56853
+CVE-2026-56858
+CVE-2026-56859
+CVE-2026-56860
+CVE-2026-56862
